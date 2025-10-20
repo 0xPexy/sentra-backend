@@ -35,4 +35,6 @@ tmp/
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
+
+data/
