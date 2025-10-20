@@ -30,7 +30,6 @@ go.work.sum
 # Build artifacts / temp
 bin/
 tmp/
-.artifacts/
 .gocache/
 .gomodcache/
 
