@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o tmp/server ./cmd/server"
+pre_cmd = ["mkdir -p tmp"]
+bin = "tmp/server"
+include_ext = ["go", "mod", "sum", "env" ]
+exclude_dir = [".git", "tmp", "bin", ".gocache", ".gomodcache"]
+exclude_regex = ["_test.go"]
+kill_delay = 500
+log = "build.log"
+
+[log]
+time = true
+
+[color]
+main = "yellow"
