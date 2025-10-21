@@ -29,7 +29,7 @@ func main() {
 	}
 	policy := erc7677.NewPolicy(repo, cfg)
 	signer := erc7677.NewSigner(cfg.PolicySK)
-	pm := erc7677.NewHandler(cfg, policy, signer)
+	pm := erc7677.NewHandler(cfg, repo, policy, signer)
 	adminH := admin.NewHandler(authSvc, repo, cfg)
 
 	r := server.NewRouter(cfg, authSvc, pm, adminH)

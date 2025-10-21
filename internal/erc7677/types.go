@@ -46,6 +46,9 @@ type PaymasterStubResult struct {
 	PaymasterData                 string   `json:"paymasterData,omitempty"`
 	PaymasterVerificationGasLimit string   `json:"paymasterVerificationGasLimit,omitempty"`
 	PaymasterPostOpGasLimit       string   `json:"paymasterPostOpGasLimit,omitempty"`
+	CallGasLimit                  string   `json:"callGasLimit,omitempty"`
+	PreVerificationGas            string   `json:"preVerificationGas,omitempty"`
+	VerificationGasLimit          string   `json:"verificationGasLimit,omitempty"`
 	IsFinal                       bool     `json:"isFinal,omitempty"`
 }
 

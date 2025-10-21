@@ -23,12 +23,11 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
-	r.POST("/", pm.HandleJSONRPC)
-
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)
 	ad := r.Group("/api/v1", guard)
 	{
+		ad.POST("/erc7677", pm.HandleJSONRPC)
 		ad.GET("/me", adminH.Me)
 
 		ad.POST("/paymasters", adminH.CreatePaymaster)

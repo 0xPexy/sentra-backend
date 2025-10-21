@@ -2,6 +2,7 @@ package erc7677
 
 import (
 	"crypto/ecdsa"
+	"encoding/binary"
 	"encoding/hex"
 	"math/big"
 	"time"
@@ -31,23 +32,20 @@ func trim0x(s string) string {
 }
 
 // Build prefix-only PMD (no signature)
-func buildPMDPrefix(now uint64, validFor time.Duration, p PolicyInput) []byte {
+func buildPMDPrefix(paymaster string, pmValGas, postOpGas uint64, now uint64, validFor time.Duration, p PolicyInput) []byte {
 	validAfter := now
 	validUntil := now + uint64(validFor/time.Second)
+	pmAddr := mustAddr(paymaster)
 	target := mustAddr(p.Target)
 	sel := mustSelector(p.Selector)
 
-	out := make([]byte, 0, 38)
+	out := make([]byte, 0, 20+16+16+6+6+20+4+2)
+	out = append(out, pmAddr.Bytes()...)
+	out = append(out, u128(pmValGas)...)
+	out = append(out, u128(postOpGas)...)
+
 	vu := make([]byte, 6)
 	va := make([]byte, 6)
-	putU48 := func(dst []byte, v uint64) {
-		dst[0] = byte(v >> 40)
-		dst[1] = byte(v >> 32)
-		dst[2] = byte(v >> 24)
-		dst[3] = byte(v >> 16)
-		dst[4] = byte(v >> 8)
-		dst[5] = byte(v)
-	}
 	putU48(vu, validUntil)
 	putU48(va, validAfter)
 	out = append(out, vu...)
@@ -56,6 +54,21 @@ func buildPMDPrefix(now uint64, validFor time.Duration, p PolicyInput) []byte {
 	out = append(out, sel[:]...)
 	out = append(out, byte(p.SubsidyBps>>8), byte(p.SubsidyBps))
 	return out
+}
+
+func putU48(dst []byte, v uint64) {
+	dst[0] = byte(v >> 40)
+	dst[1] = byte(v >> 32)
+	dst[2] = byte(v >> 24)
+	dst[3] = byte(v >> 16)
+	dst[4] = byte(v >> 8)
+	dst[5] = byte(v)
+}
+
+func u128(v uint64) []byte {
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf[8:], v)
+	return buf
 }
 
 func mustSelector(s string) [4]byte {
