@@ -10,6 +10,13 @@ func AutoMigrate(db *DB) {
 		&FunctionWhitelist{},
 		&UserWhitelist{},
 		&Operation{},
+		&LogCursor{},
+		&UserOperationEvent{},
+		&UserOperationRevert{},
+		&AccountDeployment{},
+		&SimpleAccountInitialization{},
+		&Sponsorship{},
+		&IndexerMetric{},
 	); err != nil {
 		log.Fatalf("auto migrate: %v", err)
 	}

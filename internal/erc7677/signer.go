@@ -2,26 +2,24 @@ package erc7677
 
 import (
 	"crypto/ecdsa"
-	"encoding/binary"
 	"encoding/hex"
 	"math/big"
-	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Signer struct {
-	sk *ecdsa.PrivateKey
+	sk      *ecdsa.PrivateKey
+	chainID *big.Int
 }
 
-func NewSigner(skHex string) *Signer {
+func NewSigner(skHex string, chainID *big.Int) *Signer {
 	k, err := crypto.HexToECDSA(trim0x(skHex))
 	if err != nil {
 		panic(err)
 	}
-	return &Signer{sk: k}
+	return &Signer{sk: k, chainID: chainID}
 }
 
 func trim0x(s string) string {
@@ -32,18 +30,11 @@ func trim0x(s string) string {
 }
 
 // Build prefix-only PMD (no signature)
-func buildPMDPrefix(paymaster string, pmValGas, postOpGas uint64, now uint64, validFor time.Duration, p PolicyInput) []byte {
-	validAfter := now
-	validUntil := now + uint64(validFor/time.Second)
-	pmAddr := mustAddr(paymaster)
+func buildPMDPrefix(validAfter, validUntil uint64, p PolicyInput) []byte {
 	target := mustAddr(p.Target)
 	sel := mustSelector(p.Selector)
 
-	out := make([]byte, 0, 20+16+16+6+6+20+4+2)
-	out = append(out, pmAddr.Bytes()...)
-	out = append(out, u128(pmValGas)...)
-	out = append(out, u128(postOpGas)...)
-
+	out := make([]byte, 0, 6+6+20+4)
 	vu := make([]byte, 6)
 	va := make([]byte, 6)
 	putU48(vu, validUntil)
@@ -52,7 +43,6 @@ func buildPMDPrefix(paymaster string, pmValGas, postOpGas uint64, now uint64, va
 	out = append(out, va...)
 	out = append(out, target.Bytes()...)
 	out = append(out, sel[:]...)
-	out = append(out, byte(p.SubsidyBps>>8), byte(p.SubsidyBps))
 	return out
 }
 
@@ -63,12 +53,6 @@ func putU48(dst []byte, v uint64) {
 	dst[3] = byte(v >> 16)
 	dst[4] = byte(v >> 8)
 	dst[5] = byte(v)
-}
-
-func u128(v uint64) []byte {
-	buf := make([]byte, 16)
-	binary.BigEndian.PutUint64(buf[8:], v)
-	return buf
 }
 
 func mustSelector(s string) [4]byte {
@@ -89,32 +73,25 @@ func extractTmpUserOpHash(ctx map[string]any) (common.Hash, error) {
 
 // policy message hash = keccak256( abi.encode(
 //
-//	tmpUserOpHash, target, selector, subsidyBps, validUntil, validAfter, pmValGas, postOpGas
+//	tmpUserOpHash, target, selector, validUntil, validAfter, pmValGas, postOpGas
 //
 // ) ) with EIP-191 prefix
-func (s *Signer) signPolicyMessage(tmpUserOpHash common.Hash, p PolicyInput, vu, va uint64, pmValGas, postOpGas uint64) ([]byte, error) {
-	args := abi.Arguments{
-		{Type: mustABIType("bytes32")},
-		{Type: mustABIType("address")},
-		{Type: mustABIType("bytes4")},
-		{Type: mustABIType("uint16")},
-		{Type: mustABIType("uint48")},
-		{Type: mustABIType("uint48")},
-		{Type: mustABIType("uint128")},
-		{Type: mustABIType("uint128")},
+func (s *Signer) signPolicyMessage(tmpUserOpHash common.Hash) ([]byte, error) {
+	sig, err := crypto.Sign(tmpUserOpHash[:], s.sk)
+	if err != nil {
+		return nil, err
 	}
-	packed := abiPack(args,
-		tmpUserOpHash,
-		mustAddr(p.Target),
-		mustSelector(p.Selector),
-		p.SubsidyBps,
-		u48(vu), u48(va),
-		uintToBig(pmValGas),
-		uintToBig(postOpGas),
-	)
-	msg := crypto.Keccak256(packed)
-	ethSigned := crypto.Keccak256Hash(append([]byte("\x19Ethereum Signed Message:\n32"), msg...))
-	return crypto.Sign(ethSigned[:], s.sk)
+
+	// The crypto.Sign function returns v as 0 or 1 (recovery ID).
+	// For UserOperation signatures, it's common to adjust v to be 27 or 28
+	// (standard non-EIP-155 v values), and the EntryPoint contract handles
+	// the EIP-155 chain ID logic internally using block.chainid. This results
+	// in a 'v' value of 27 (0x1b) or 28 (0x1c).
+	sig[64] += 27
+
+	// The chainID is already incorporated into the userOpHash calculation
+	// via the EIP-712 domain separator.
+	return sig, nil
 }
 
 func u48(i uint64) *bigInt { return newBig().SetUint64(i) }

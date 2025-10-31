@@ -67,3 +67,99 @@ type Operation struct {
 	CreatedAt   time.Time `gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
 }
+
+type LogCursor struct {
+	ID           uint   `gorm:"primaryKey"`
+	ChainID      uint64 `gorm:"uniqueIndex:idx_log_cursor"`
+	Address      string `gorm:"size:66;uniqueIndex:idx_log_cursor"`
+	LastBlock    uint64
+	LastTxHash   string `gorm:"size:66"`
+	LastLogIndex uint
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+}
+
+type UserOperationEvent struct {
+	ID            uint   `gorm:"primaryKey"`
+	ChainID       uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
+	EntryPoint    string `gorm:"size:66;index"`
+	UserOpHash    string `gorm:"size:66;uniqueIndex"`
+	Sender        string `gorm:"size:66;index"`
+	Paymaster     string `gorm:"size:66"`
+	Target        string `gorm:"size:66"`
+	Nonce         string `gorm:"size:78"`
+	Success       bool   `gorm:"index"`
+	ActualGasCost string `gorm:"size:78"`
+	ActualGasUsed string `gorm:"size:78"`
+	TxHash        string `gorm:"size:66;uniqueIndex:idx_userop_txlog"`
+	BlockNumber   uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
+	LogIndex      uint   `gorm:"uniqueIndex:idx_userop_txlog"`
+	BlockTime     time.Time
+	CreatedAt     time.Time `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
+}
+
+type UserOperationRevert struct {
+	ID           uint   `gorm:"primaryKey"`
+	ChainID      uint64 `gorm:"uniqueIndex:idx_useroprev_txlog"`
+	EntryPoint   string `gorm:"size:66;index"`
+	UserOpHash   string `gorm:"size:66;uniqueIndex"`
+	Sender       string `gorm:"size:66"`
+	Nonce        string `gorm:"size:78"`
+	RevertReason string
+	TxHash       string    `gorm:"size:66;uniqueIndex:idx_useroprev_txlog"`
+	BlockNumber  uint64    `gorm:"uniqueIndex:idx_useroprev_txlog"`
+	LogIndex     uint      `gorm:"uniqueIndex:idx_useroprev_txlog"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+}
+
+type AccountDeployment struct {
+	ID          uint      `gorm:"primaryKey"`
+	ChainID     uint64    `gorm:"uniqueIndex:idx_accountdeploy_txlog"`
+	EntryPoint  string    `gorm:"size:66;index"`
+	UserOpHash  string    `gorm:"size:66;uniqueIndex"`
+	Sender      string    `gorm:"size:66;index"`
+	Factory     string    `gorm:"size:66"`
+	Paymaster   string    `gorm:"size:66"`
+	TxHash      string    `gorm:"size:66;uniqueIndex:idx_accountdeploy_txlog"`
+	BlockNumber uint64    `gorm:"uniqueIndex:idx_accountdeploy_txlog"`
+	LogIndex    uint      `gorm:"uniqueIndex:idx_accountdeploy_txlog"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
+type SimpleAccountInitialization struct {
+	ID          uint      `gorm:"primaryKey"`
+	ChainID     uint64    `gorm:"uniqueIndex:idx_simpleaccount_init"`
+	Account     string    `gorm:"size:66;uniqueIndex"`
+	EntryPoint  string    `gorm:"size:66;index"`
+	Owner       string    `gorm:"size:66"`
+	TxHash      string    `gorm:"size:66;uniqueIndex:idx_simpleaccount_init"`
+	BlockNumber uint64    `gorm:"uniqueIndex:idx_simpleaccount_init"`
+	LogIndex    uint      `gorm:"uniqueIndex:idx_simpleaccount_init"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
+type Sponsorship struct {
+	ID          uint      `gorm:"primaryKey"`
+	ChainID     uint64    `gorm:"uniqueIndex:idx_sponsorship_txlog"`
+	Paymaster   string    `gorm:"size:66;index"`
+	UserOpHash  string    `gorm:"size:66;uniqueIndex"`
+	Sender      string    `gorm:"size:66"`
+	ValidUntil  string    `gorm:"size:78"`
+	ValidAfter  string    `gorm:"size:78"`
+	TxHash      string    `gorm:"size:66;uniqueIndex:idx_sponsorship_txlog"`
+	BlockNumber uint64    `gorm:"uniqueIndex:idx_sponsorship_txlog"`
+	LogIndex    uint      `gorm:"uniqueIndex:idx_sponsorship_txlog"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
+type IndexerMetric struct {
+	MetricID  string    `gorm:"primaryKey;size:128"`
+	Value     string    `gorm:"type:text"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+}

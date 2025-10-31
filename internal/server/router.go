@@ -12,7 +12,7 @@ import (
 )
 
 func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler) *gin.Engine {
-	r := gin.Default()
+    r := gin.New()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},

@@ -9,7 +9,6 @@ import (
 
 	"github.com/0xPexy/sentra-backend/internal/config"
 	"github.com/0xPexy/sentra-backend/internal/store"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -23,21 +22,6 @@ func NewPolicy(repo *store.Repository, cfg config.Config) *Policy {
 	return &Policy{repo: repo, cfg: cfg, defDur: 10 * time.Minute}
 }
 
-// utils moved here for packing
-func mustABIType(t string) abi.Type {
-	typ, err := abi.NewType(t, "", nil)
-	if err != nil {
-		panic(err)
-	}
-	return typ
-}
-func abiPack(args abi.Arguments, values ...any) []byte {
-	b, err := args.Pack(values...)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
 func hex0x(b []byte) string { return "0x" + hex.EncodeToString(b) }
 func hexUint(u uint64) string {
 	return "0x" + strings.TrimLeft(hex.EncodeToString(new(big.Int).SetUint64(u).Bytes()), "0")
