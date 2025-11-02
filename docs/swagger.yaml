@@ -1,0 +1,717 @@
+basePath: /api/v1
+definitions:
+  internal_admin.AddContractRequest:
+    properties:
+      address:
+        type: string
+      functions:
+        items:
+          $ref: '#/definitions/internal_admin.ContractFunctionInput'
+        type: array
+      name:
+        type: string
+    type: object
+  internal_admin.AddUserRequest:
+    properties:
+      address:
+        type: string
+    type: object
+  internal_admin.ContractFunctionInput:
+    properties:
+      selector:
+        type: string
+      signature:
+        type: string
+    type: object
+  internal_admin.CreatePaymasterRequest:
+    properties:
+      address:
+        type: string
+      chainId:
+        type: integer
+      entryPoint:
+        type: string
+      usdPerMaxOp:
+        type: integer
+      users:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_admin.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  internal_admin.LoginResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  internal_admin.ReplaceUsersRequest:
+    properties:
+      users:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_admin.UpdateContractRequest:
+    properties:
+      address:
+        type: string
+      functions:
+        items:
+          $ref: '#/definitions/internal_admin.ContractFunctionInput'
+        type: array
+      name:
+        type: string
+    type: object
+  internal_admin.UpdatePaymasterRequest:
+    properties:
+      address:
+        type: string
+      usdPerMaxOp:
+        type: integer
+      users:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_erc7677.JSONRPCRequest:
+    properties:
+      id: {}
+      jsonrpc:
+        type: string
+      method:
+        type: string
+      params:
+        items:
+          type: integer
+        type: array
+    type: object
+  internal_erc7677.JSONRPCResponse:
+    properties:
+      error:
+        $ref: '#/definitions/internal_erc7677.rpcErrBody'
+      id: {}
+      jsonrpc:
+        type: string
+      result: {}
+    type: object
+  internal_erc7677.rpcErrBody:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: API documentation for the Sentinel 4337 backend service.
+  title: Sentinel 4337 Backend API
+  version: "1.0"
+paths:
+  /api/v1/contracts/{name}:
+    get:
+      parameters:
+      - description: Contract name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Retrieve compiled contract artifacts by name
+      tags:
+      - Contracts
+  /api/v1/erc7677:
+    post:
+      consumes:
+      - application/json
+      description: Handles pm_getPaymasterData and pm_getPaymasterStubData for the
+        configured paymaster.
+      parameters:
+      - description: JSON-RPC request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_erc7677.JSONRPCRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_erc7677.JSONRPCResponse'
+      security:
+      - BearerAuth: []
+      summary: Execute ERC-7677 paymaster JSON-RPC methods
+      tags:
+      - Paymaster
+  /api/v1/me:
+    get:
+      description: Returns the authenticated admin's identifier and username.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current admin profile
+      tags:
+      - Admin
+  /api/v1/paymasters:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List paymasters for the authenticated admin
+      tags:
+      - Paymasters
+    post:
+      consumes:
+      - application/json
+      description: Registers a paymaster entry-point association and optional user
+        whitelist.
+      parameters:
+      - description: Paymaster payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.CreatePaymasterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new paymaster configuration
+      tags:
+      - Paymasters
+  /api/v1/paymasters/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get the authenticated admin's paymaster details
+      tags:
+      - Paymasters
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Update payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.UpdatePaymasterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update paymaster configuration
+      tags:
+      - Paymasters
+  /api/v1/paymasters/me/contracts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List whitelisted contracts for the paymaster
+      tags:
+      - Contracts
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contract payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.AddContractRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add or update a contract whitelist entry
+      tags:
+      - Contracts
+  /api/v1/paymasters/me/contracts/{contractId}:
+    delete:
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a contract whitelist entry
+      tags:
+      - Contracts
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: integer
+      - description: Update payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.UpdateContractRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a contract whitelist entry
+      tags:
+      - Contracts
+  /api/v1/paymasters/me/operations:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List recorded user operations for the paymaster
+      tags:
+      - Operations
+  /api/v1/paymasters/me/users:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List whitelisted user addresses
+      tags:
+      - Users
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: User addresses
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.ReplaceUsersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Replace the entire paymaster user whitelist
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: User payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.AddUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a user to the paymaster whitelist
+      tags:
+      - Users
+  /api/v1/paymasters/me/users/{address}:
+    delete:
+      parameters:
+      - description: User address
+        in: path
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a user from the paymaster whitelist
+      tags:
+      - Users
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates an admin and returns a JWT access token.
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_admin.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_admin.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Admin login
+      tags:
+      - Auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

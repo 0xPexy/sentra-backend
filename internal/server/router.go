@@ -9,10 +9,12 @@ import (
 	"github.com/0xPexy/sentra-backend/internal/erc7677"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler) *gin.Engine {
-    r := gin.New()
+	r := gin.New()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -22,6 +24,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	}))
 
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)

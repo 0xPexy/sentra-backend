@@ -14,6 +14,7 @@ DB_FILE := $(or $(SQLITE_DSN),./data/app.db)
 tools:
 	@echo "Installing tools..."
 	@go install github.com/air-verse/air@latest
+	@go install github.com/swaggo/swag/cmd/swag@latest
 
 run:
 	@GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) go run ./cmd/server
@@ -23,6 +24,10 @@ dev: tools
 
 tidy:
 	@GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) go mod tidy
+
+swagger:
+	@$(GOBIN)/swag init --generalInfo cmd/server/main.go --output docs --parseInternal --parseDependency
+	@echo "Swagger docs generated under docs/"
 
 build:
 	@mkdir -p bin

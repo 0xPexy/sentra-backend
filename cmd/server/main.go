@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	docs "github.com/0xPexy/sentra-backend/docs"
 	"github.com/0xPexy/sentra-backend/internal/admin"
 	"github.com/0xPexy/sentra-backend/internal/auth"
 	cfgpkg "github.com/0xPexy/sentra-backend/internal/config"
@@ -19,8 +20,19 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// @title Sentinel 4337 Backend API
+// @version 1.0
+// @description API documentation for the Sentinel 4337 backend service.
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	cfg := cfgpkg.Load()
+	docs.SwaggerInfo.Version = "1.0"
+	docs.SwaggerInfo.Title = "Sentinel 4337 Backend API"
+	docs.SwaggerInfo.Description = "API documentation for the Sentinel 4337 backend service."
+	docs.SwaggerInfo.BasePath = "/api/v1"
 
 	db := store.OpenSQLite(cfg.SQLiteDSN)
 	store.AutoMigrate(db)
@@ -64,7 +76,8 @@ func main() {
 		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo), ethClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
 	}
 
-	pm := erc7677.NewHandler(cfg, repo, policy, signer, ethClient)
+	pmLogger := log.New(log.Writer(), "pm: ", log.LstdFlags)
+	pm := erc7677.NewHandler(cfg, repo, policy, signer, ethClient, pmLogger)
 	adminH := admin.NewHandler(authSvc, repo, cfg)
 
 	r := server.NewRouter(cfg, authSvc, pm, adminH)

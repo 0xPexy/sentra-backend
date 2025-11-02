@@ -22,6 +22,13 @@ func NewPolicy(repo *store.Repository, cfg config.Config) *Policy {
 	return &Policy{repo: repo, cfg: cfg, defDur: 10 * time.Minute}
 }
 
+func (p *Policy) DefaultValidity() time.Duration {
+	if p == nil || p.defDur <= 0 {
+		return defaultValidityWindow
+	}
+	return p.defDur
+}
+
 func hex0x(b []byte) string { return "0x" + hex.EncodeToString(b) }
 func hexUint(u uint64) string {
 	return "0x" + strings.TrimLeft(hex.EncodeToString(new(big.Int).SetUint64(u).Bytes()), "0")

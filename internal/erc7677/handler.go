@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"strings"
@@ -14,21 +15,43 @@ import (
 
 	"github.com/0xPexy/sentra-backend/internal/config"
 	"github.com/0xPexy/sentra-backend/internal/store"
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 )
 
+type paymasterRepo interface {
+	GetPaymasterByAdmin(ctx context.Context, adminID uint) (*store.Paymaster, error)
+	GetContractByAddress(ctx context.Context, paymasterID uint, address string) (*store.ContractWhitelist, error)
+}
+
+type policySigner interface {
+	signPolicyMessage(common.Hash) ([]byte, error)
+}
+
+type ethClient interface {
+	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
+	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
+}
+
+type validityProvider interface {
+	DefaultValidity() time.Duration
+}
+
+const defaultValidityWindow = 10 * time.Minute
+
 type Handler struct {
-	cfg    config.Config
-	policy *Policy
-	signer *Signer
-	repo   *store.Repository
-	eth    *ethclient.Client
+	cfg             config.Config
+	repo            paymasterRepo
+	signer          policySigner
+	eth             ethClient
+	logger          *log.Logger
+	defaultValidFor time.Duration
 }
 
 var stubSignatureBytes = func() []byte {
@@ -39,6 +62,19 @@ var stubSignatureBytes = func() []byte {
 	buf[64] = 0x1c
 	return buf
 }()
+
+type rpcError struct {
+	code    int
+	message string
+}
+
+func (e rpcError) Error() string {
+	return e.message
+}
+
+func newRPCError(code int, msg string) error {
+	return rpcError{code: code, message: msg}
+}
 
 type userOperation struct {
 	Sender               common.Address
@@ -80,8 +116,28 @@ func (op *userOperation) toPacked() *packedUserOperation {
 	}
 }
 
-func NewHandler(cfg config.Config, repo *store.Repository, p *Policy, s *Signer, eth *ethclient.Client) *Handler {
-	return &Handler{cfg: cfg, policy: p, signer: s, repo: repo, eth: eth}
+func NewHandler(cfg config.Config, repo *store.Repository, p *Policy, s *Signer, eth *ethclient.Client, logger *log.Logger) *Handler {
+	return newHandler(cfg, repo, p, s, eth, logger)
+}
+
+func newHandler(cfg config.Config, repo paymasterRepo, p validityProvider, signer policySigner, eth ethClient, logger *log.Logger) *Handler {
+	if logger == nil {
+		logger = log.New(log.Writer(), "erc7677: ", log.LstdFlags)
+	}
+	validFor := defaultValidityWindow
+	if p != nil {
+		if dur := p.DefaultValidity(); dur > 0 {
+			validFor = dur
+		}
+	}
+	return &Handler{
+		cfg:             cfg,
+		repo:            repo,
+		signer:          signer,
+		eth:             eth,
+		logger:          logger,
+		defaultValidFor: validFor,
+	}
 }
 
 const entryPointABIJSON = `[{"inputs":[{"components":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"bytes","name":"initCode","type":"bytes"},{"internalType":"bytes","name":"callData","type":"bytes"},{"internalType":"bytes32","name":"accountGasLimits","type":"bytes32"},{"internalType":"uint256","name":"preVerificationGas","type":"uint256"},{"internalType":"bytes32","name":"gasFees","type":"bytes32"},{"internalType":"bytes","name":"paymasterAndData","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct PackedUserOperation","name":"userOp","type":"tuple"}],"name":"getUserOpHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
@@ -96,59 +152,65 @@ func mustParseABI(jsonStr string) abi.ABI {
 	return parsed
 }
 
-func ginLogf(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintln(gin.DefaultWriter, msg)
+func (h *Handler) logf(format string, args ...any) {
+	if h.logger == nil {
+		return
+	}
+	h.logger.Printf(format, args...)
 }
 
-func logUserOperation(prefix string, op *userOperation) {
+func (h *Handler) logUserOperation(prefix string, op *userOperation) {
+	if h.logger == nil {
+		return
+	}
 	if op == nil {
-		ginLogf("%s userOp=<nil>", prefix)
+		h.logger.Printf("%s userOp=nil", prefix)
 		return
 	}
-	payload := map[string]any{
-		"sender":               op.Sender.Hex(),
-		"nonce":                ensureBigInt(op.Nonce).String(),
-		"initCode":             fmt.Sprintf("0x%x", op.InitCode),
-		"callData":             fmt.Sprintf("0x%x", op.CallData),
-		"callGasLimit":         ensureBigInt(op.CallGasLimit).String(),
-		"verificationGasLimit": ensureBigInt(op.VerificationGasLimit).String(),
-		"preVerificationGas":   ensureBigInt(op.PreVerificationGas).String(),
-		"maxFeePerGas":         ensureBigInt(op.MaxFeePerGas).String(),
-		"maxPriorityFeePerGas": ensureBigInt(op.MaxPriorityFeePerGas).String(),
-		"paymasterAndData":     fmt.Sprintf("0x%x", op.PaymasterAndData),
-		"signature":            fmt.Sprintf("0x%x", op.Signature),
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		ginLogf("%s userOp log error: %v", prefix, err)
-		return
-	}
-	ginLogf("%s userOp=%s", prefix, string(data))
+	h.logger.Printf("%s sender=%s nonce=%s initCodeLen=%d callDataLen=%d callGas=%s verifyGas=%s preVerif=%s maxFee=%s maxPriority=%s paymasterLen=%d",
+		prefix,
+		op.Sender.Hex(),
+		ensureBigInt(op.Nonce).String(),
+		len(op.InitCode),
+		len(op.CallData),
+		ensureBigInt(op.CallGasLimit).String(),
+		ensureBigInt(op.VerificationGasLimit).String(),
+		ensureBigInt(op.PreVerificationGas).String(),
+		ensureBigInt(op.MaxFeePerGas).String(),
+		ensureBigInt(op.MaxPriorityFeePerGas).String(),
+		len(op.PaymasterAndData),
+	)
 }
 
-func logPackedUserOperation(prefix string, packed *packedUserOperation) {
+func (h *Handler) logPackedUserOperation(prefix string, packed *packedUserOperation) {
+	if h.logger == nil {
+		return
+	}
 	if packed == nil {
-		ginLogf("%s packedUserOp=<nil>", prefix)
+		h.logger.Printf("%s packedUserOp=nil", prefix)
 		return
 	}
-	payload := map[string]any{
-		"sender":             packed.Sender.Hex(),
-		"nonce":              fmt.Sprintf("0x%s", ensureBigInt(packed.Nonce).Text(16)),
-		"initCode":           fmt.Sprintf("0x%x", packed.InitCode),
-		"callData":           fmt.Sprintf("0x%x", packed.CallData),
-		"accountGasLimits":   fmt.Sprintf("0x%s", hex.EncodeToString(packed.AccountGasLimits[:])),
-		"preVerificationGas": fmt.Sprintf("0x%s", ensureBigInt(packed.PreVerificationGas).Text(16)),
-		"gasFees":            fmt.Sprintf("0x%s", hex.EncodeToString(packed.GasFees[:])),
-		"paymasterAndData":   fmt.Sprintf("0x%x", packed.PaymasterAndData),
-		"signature":          fmt.Sprintf("0x%x", packed.Signature),
+	h.logger.Printf("%s sender=%s nonce=%s accountGasLimits=%s gasFees=%s paymasterLen=%d signatureLen=%d",
+		prefix,
+		packed.Sender.Hex(),
+		fmt.Sprintf("0x%s", ensureBigInt(packed.Nonce).Text(16)),
+		hex.EncodeToString(packed.AccountGasLimits[:]),
+		hex.EncodeToString(packed.GasFees[:]),
+		len(packed.PaymasterAndData),
+		len(packed.Signature),
+	)
+}
+
+func (h *Handler) writeError(c *gin.Context, id any, err error) {
+	var rerr rpcError
+	if errors.As(err, &rerr) {
+		c.JSON(http.StatusOK, rpcErr(id, rerr.code, rerr.message))
+		return
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		ginLogf("%s packedUserOp log error: %v", prefix, err)
-		return
+		h.logf("internal error: %v", err)
 	}
-	ginLogf("%s packedUserOp=%s", prefix, string(data))
+	c.JSON(http.StatusOK, rpcErr(id, -32000, "internal error"))
 }
 
 var (
@@ -213,6 +275,52 @@ func packUint128Bytes(high, low *big.Int) [32]byte {
 	return out
 }
 
+func (h *Handler) resolveValidDuration(ctxMap map[string]any) time.Duration {
+	valid := h.defaultValidFor
+	if valid <= 0 {
+		valid = defaultValidityWindow
+	}
+	if s, ok := ctxMap["validForSec"].(float64); ok && s > 0 {
+		valid = time.Duration(uint64(s)) * time.Second
+	}
+	return valid
+}
+
+func (h *Handler) computeValidity(ctx context.Context, validFor time.Duration) (uint64, uint64) {
+	if validFor <= 0 {
+		validFor = h.defaultValidFor
+		if validFor <= 0 {
+			validFor = defaultValidityWindow
+		}
+	}
+	parentTs, latestTs := h.blockTimestamps(ctx)
+	validAfter := parentTs
+	if validAfter > 60 {
+		validAfter -= 60
+	} else {
+		validAfter = 0
+	}
+	if latestTs > 0 && validAfter > latestTs {
+		validAfter = latestTs
+	}
+	validUntil := uint64(time.Now().Add(validFor).Unix())
+	if validUntil <= validAfter {
+		validUntil = validAfter + uint64(validFor/time.Second)
+		if validUntil <= validAfter {
+			validUntil = validAfter + 600
+		}
+	}
+	return validAfter, validUntil
+}
+
+func (h *Handler) wrapPolicyData(payload []byte) []byte {
+	out := make([]byte, 0, 32+len(payload))
+	out = appendUint128(out, h.cfg.PMValGas)
+	out = appendUint128(out, h.cfg.PostOpGas)
+	out = append(out, payload...)
+	return out
+}
+
 func hashUserOperationLocal(entryPoint common.Address, chainID *big.Int, op *userOperation) (common.Hash, error) {
 	initHash := hashBytes(op.InitCode)
 	callHash := hashBytes(op.CallData)
@@ -251,6 +359,45 @@ func hashUserOperationLocal(entryPoint common.Address, chainID *big.Int, op *use
 	return crypto.Keccak256Hash(finalBytes), nil
 }
 
+type rpcCallParams struct {
+	userOpRaw  map[string]any
+	entryPoint string
+	chain      any
+	ctx        map[string]any
+}
+
+func parseRPCParams(raw json.RawMessage) (rpcCallParams, error) {
+	var in []any
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return rpcCallParams{}, newRPCError(errInvalidParams, "invalid params")
+	}
+	if len(in) != 4 {
+		return rpcCallParams{}, newRPCError(errInvalidParams, "invalid params")
+	}
+	userOp, ok := in[0].(map[string]any)
+	if !ok {
+		return rpcCallParams{}, newRPCError(errInvalidParams, "userOp must be an object")
+	}
+	entryPoint, _ := in[1].(string)
+	ctxMap, _ := in[3].(map[string]any)
+	return rpcCallParams{
+		userOpRaw:  userOp,
+		entryPoint: strings.TrimSpace(entryPoint),
+		chain:      in[2],
+		ctx:        ctxMap,
+	}, nil
+}
+
+// HandleJSONRPC godoc
+// @Summary Execute ERC-7677 paymaster JSON-RPC methods
+// @Description Handles pm_getPaymasterData and pm_getPaymasterStubData for the configured paymaster.
+// @Tags Paymaster
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body JSONRPCRequest true "JSON-RPC request"
+// @Success 200 {object} JSONRPCResponse
+// @Router /api/v1/erc7677 [post]
 func (h *Handler) HandleJSONRPC(c *gin.Context) {
 	var req rpcRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -268,63 +415,44 @@ func (h *Handler) HandleJSONRPC(c *gin.Context) {
 }
 
 func (h *Handler) stub(c *gin.Context, req rpcRequest) {
-	var in []any
-	if err := json.Unmarshal(req.Params, &in); err != nil || len(in) != 4 {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, "invalid params"))
-		return
-	}
-	rawUserOp := in[0]
-	// entryPoint := in[1]
-	// chainId := in[2]
-	ctxMap, _ := in[3].(map[string]any)
-
-	policy := PolicyInput{
-		Target:   strOr(ctxMap["target"], ""),
-		Selector: strOr(ctxMap["selector"], ""),
-	}
-	validFor := h.policy.defDur
-
-	parentTs, latestTs := h.blockTimestamps(c.Request.Context())
-	pm, ok := h.resolvePaymasterAddress(c, req.ID)
-	if !ok {
-		return
-	}
-	if !h.ensureAllowedTarget(c, req.ID, pm, &policy) {
-		return
-	}
-	validAfter := parentTs
-	if validAfter > 60 {
-		validAfter -= 60
-	} else {
-		validAfter = 0
-	}
-	if latestTs > 0 && validAfter > latestTs {
-		validAfter = latestTs
-	}
-	validUntil := uint64(time.Now().Add(validFor).Unix())
-	if validUntil <= validAfter {
-		validUntil = validAfter + uint64(validFor/time.Second)
-		if validUntil <= validAfter {
-			validUntil = validAfter + 600
-		}
-	}
-	pmdPrefix := buildPMDPrefix(validAfter, validUntil, policy)
-	policyData := append([]byte(nil), pmdPrefix...)
-	stubResponse := append(append([]byte(nil), policyData...), stubSignatureBytes...)
-
-	userOp, err := parseUserOperation(rawUserOp)
+	params, err := parseRPCParams(req.Params)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, err.Error()))
+		h.writeError(c, req.ID, err)
+		return
+	}
+	policy := PolicyInput{
+		Target:   strOr(params.ctx["target"], ""),
+		Selector: strOr(params.ctx["selector"], ""),
+	}
+	validFor := h.resolveValidDuration(params.ctx)
+	pm, err := h.resolvePaymaster(c)
+	if err != nil {
+		h.writeError(c, req.ID, err)
+		return
+	}
+	if err := h.ensureAllowedTarget(c.Request.Context(), pm, &policy); err != nil {
+		h.writeError(c, req.ID, err)
+		return
+	}
+	validAfter, validUntil := h.computeValidity(c.Request.Context(), validFor)
+
+	userOp, err := parseUserOperation(params.userOpRaw)
+	if err != nil {
+		h.writeError(c, req.ID, newRPCError(errInvalidParams, err.Error()))
 		return
 	}
 	pmAddr := common.HexToAddress(pm.Address)
-	userOp.PaymasterAndData = append(pmAddr.Bytes(), stubResponse...)
-	logUserOperation("pm_getPaymasterStubData", userOp)
+	policyData := append([]byte(nil), buildPMDPrefix(validAfter, validUntil, policy)...)
+	policyWithStubSig := append(policyData, stubSignatureBytes...)
+	envelope := h.wrapPolicyData(policyWithStubSig)
+	userOp.PaymasterAndData = append(pmAddr.Bytes(), envelope...)
+
+	h.logUserOperation("pm_getPaymasterStubData", userOp)
 
 	out := PaymasterStubResult{
 		Sponsor:                       &Sponsor{Name: "Sentra"},
 		Paymaster:                     pm.Address,
-		PaymasterData:                 hex0x(stubResponse),
+		PaymasterData:                 hex0x(policyWithStubSig),
 		PaymasterVerificationGasLimit: hexUint(h.cfg.PMValGas),
 		PaymasterPostOpGasLimit:       hexUint(h.cfg.PostOpGas),
 		IsFinal:                       false,
@@ -333,96 +461,62 @@ func (h *Handler) stub(c *gin.Context, req rpcRequest) {
 }
 
 func (h *Handler) data(c *gin.Context, req rpcRequest) {
-	var in []any
-	if err := json.Unmarshal(req.Params, &in); err != nil || len(in) != 4 {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, "invalid params"))
-		return
-	}
-	rawUserOp := in[0]
-	entryPoint, _ := in[1].(string)
-	chainInput := in[2]
-	entryPoint = strings.TrimSpace(entryPoint)
-	if entryPoint == "" {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, "entryPoint required"))
-		return
-	}
-	chainID, err := parseChainID(chainInput)
+	params, err := parseRPCParams(req.Params)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, err.Error()))
+		h.writeError(c, req.ID, err)
 		return
 	}
-	ctxMap, _ := in[3].(map[string]any)
+	if params.entryPoint == "" {
+		h.writeError(c, req.ID, newRPCError(errInvalidParams, "entryPoint required"))
+		return
+	}
+	chainID, err := parseChainID(params.chain)
+	if err != nil {
+		h.writeError(c, req.ID, newRPCError(errInvalidParams, err.Error()))
+		return
+	}
 	policy := PolicyInput{
-		Target:   strOr(ctxMap["target"], ""),
-		Selector: strOr(ctxMap["selector"], ""),
+		Target:   strOr(params.ctx["target"], ""),
+		Selector: strOr(params.ctx["selector"], ""),
 	}
-	validFor := h.policy.defDur
-	if s, ok := ctxMap["validForSec"].(float64); ok && s > 0 {
-		validFor = time.Duration(uint64(s)) * time.Second
-	}
-
-	parentTs, latestTs := h.blockTimestamps(c.Request.Context())
-	pm, ok := h.resolvePaymasterAddress(c, req.ID)
-	if !ok {
-		return
-	}
-	if !h.ensureAllowedTarget(c, req.ID, pm, &policy) {
-		return
-	}
-	validAfter := parentTs
-	if validAfter > 60 {
-		validAfter -= 60
-	} else {
-		validAfter = 0
-	}
-	if latestTs > 0 && validAfter > latestTs {
-		validAfter = latestTs
-	}
-	validUntil := uint64(time.Now().Add(validFor).Unix())
-	if validUntil <= validAfter {
-		validUntil = validAfter + uint64(validFor/time.Second)
-		if validUntil <= validAfter {
-			validUntil = validAfter + 600
-		}
-	}
-	pmdPrefix := buildPMDPrefix(validAfter, validUntil, policy)
-	policyData := append([]byte(nil), pmdPrefix...)
-	unsignedPayload := make([]byte, 0, 32+len(policyData))
-	unsignedPayload = appendUint128(unsignedPayload, h.cfg.PMValGas)
-	unsignedPayload = appendUint128(unsignedPayload, h.cfg.PostOpGas)
-	unsignedPayload = append(unsignedPayload, policyData...)
-	ginLogf("paymaster data")
-	userOp, err := parseUserOperation(rawUserOp)
+	validFor := h.resolveValidDuration(params.ctx)
+	pm, err := h.resolvePaymaster(c)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(req.ID, errInvalidParams, err.Error()))
+		h.writeError(c, req.ID, err)
 		return
 	}
-	ginLogf("paymaster data11")
+	if err := h.ensureAllowedTarget(c.Request.Context(), pm, &policy); err != nil {
+		h.writeError(c, req.ID, err)
+		return
+	}
+	validAfter, validUntil := h.computeValidity(c.Request.Context(), validFor)
+
+	userOp, err := parseUserOperation(params.userOpRaw)
+	if err != nil {
+		h.writeError(c, req.ID, newRPCError(errInvalidParams, err.Error()))
+		return
+	}
 	pmAddr := common.HexToAddress(pm.Address)
-	paymasterAndData := append(pmAddr.Bytes(), unsignedPayload...)
-	userOp.PaymasterAndData = paymasterAndData
+	policyData := append([]byte(nil), buildPMDPrefix(validAfter, validUntil, policy)...)
+	unsignedEnvelope := h.wrapPolicyData(policyData)
+	userOp.PaymasterAndData = append(pmAddr.Bytes(), unsignedEnvelope...)
 
-	logUserOperation("pm_getPaymasterData", userOp)
+	h.logUserOperation("pm_getPaymasterData", userOp)
 
-	hash, err := h.userOpHash(c.Request.Context(), entryPoint, chainID, userOp)
+	hash, err := h.userOpHash(c.Request.Context(), params.entryPoint, chainID, userOp)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(req.ID, -32000, err.Error()))
+		h.writeError(c, req.ID, newRPCError(-32000, err.Error()))
 		return
 	}
-	ginLogf("paymaster data112")
 	sig, err := h.signer.signPolicyMessage(hash)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(req.ID, -32000, "signing failed"))
+		h.writeError(c, req.ID, newRPCError(-32000, "signing failed"))
 		return
 	}
-	ginLogf("pm_getPaymasterData sig=%s", hex0x(sig))
+	h.logf("pm_getPaymasterData sig=%s", hex0x(sig))
 	policyDataWithSig := append(append([]byte(nil), policyData...), sig...)
-	signedPayload := make([]byte, 0, 32+len(policyDataWithSig))
-	signedPayload = appendUint128(signedPayload, h.cfg.PMValGas)
-	signedPayload = appendUint128(signedPayload, h.cfg.PostOpGas)
-	signedPayload = append(signedPayload, policyDataWithSig...)
-
-	userOp.PaymasterAndData = append(pmAddr.Bytes(), signedPayload...)
+	signedEnvelope := h.wrapPolicyData(policyDataWithSig)
+	userOp.PaymasterAndData = append(pmAddr.Bytes(), signedEnvelope...)
 
 	out := PaymasterDataResult{
 		Sponsor:                       &Sponsor{Name: "Sentra"},
@@ -434,23 +528,21 @@ func (h *Handler) data(c *gin.Context, req rpcRequest) {
 	c.JSON(http.StatusOK, rpcOK(req.ID, out))
 }
 
-func (h *Handler) resolvePaymasterAddress(c *gin.Context, id any) (*store.Paymaster, bool) {
+func (h *Handler) resolvePaymaster(c *gin.Context) (*store.Paymaster, error) {
 	adminID := c.GetUint("adminID")
 	if adminID == 0 {
-		c.JSON(http.StatusOK, rpcErr(id, errInvalidRequest, "admin context required"))
-		return nil, false
+		return nil, newRPCError(errInvalidRequest, "admin context required")
 	}
 	pm, err := h.repo.GetPaymasterByAdmin(c.Request.Context(), adminID)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(id, -32000, "failed to load paymaster"))
-		return nil, false
+		h.logf("load paymaster failed: adminID=%d err=%v", adminID, err)
+		return nil, newRPCError(-32000, "failed to load paymaster")
 	}
 	if pm == nil || pm.Address == "" {
-		c.JSON(http.StatusOK, rpcErr(id, -32000, "paymaster not registered"))
-		return nil, false
+		return nil, newRPCError(-32000, "paymaster not registered")
 	}
 	pm.Address = strings.ToLower(pm.Address)
-	return pm, true
+	return pm, nil
 }
 
 func parseUserOperation(raw any) (*userOperation, error) {
@@ -567,34 +659,30 @@ func decodeAnyBytes(m map[string]any, key string) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (h *Handler) ensureAllowedTarget(c *gin.Context, reqID any, pm *store.Paymaster, policy *PolicyInput) bool {
+func (h *Handler) ensureAllowedTarget(ctx context.Context, pm *store.Paymaster, policy *PolicyInput) error {
 	target := strings.ToLower(strings.TrimSpace(policy.Target))
 	if target == "" {
-		c.JSON(http.StatusOK, rpcErr(reqID, errInvalidParams, "target required"))
-		return false
+		return newRPCError(errInvalidParams, "target required")
 	}
 	if !common.IsHexAddress(target) {
-		c.JSON(http.StatusOK, rpcErr(reqID, errInvalidParams, "invalid target address"))
-		return false
+		return newRPCError(errInvalidParams, "invalid target address")
 	}
-	contract, err := h.repo.GetContractByAddress(c.Request.Context(), pm.ID, target)
+	contract, err := h.repo.GetContractByAddress(ctx, pm.ID, target)
 	if err != nil {
-		c.JSON(http.StatusOK, rpcErr(reqID, -32000, "allowlist lookup failed"))
-		return false
+		h.logf("allowlist lookup failed: paymasterID=%d target=%s err=%v", pm.ID, target, err)
+		return newRPCError(-32000, "allowlist lookup failed")
 	}
 	if contract == nil {
-		c.JSON(http.StatusOK, rpcErr(reqID, -32000, "contract not allowed"))
-		return false
+		return newRPCError(-32000, "contract not allowed")
 	}
 	policy.Target = target
 	selector := strings.TrimSpace(policy.Selector)
 	if selector == "" || len(contract.Functions) == 0 {
-		return true
+		return nil
 	}
 	selector = strings.TrimPrefix(selector, "0x")
 	if len(selector) != 8 {
-		c.JSON(http.StatusOK, rpcErr(reqID, errInvalidParams, "selector must be 4 bytes"))
-		return false
+		return newRPCError(errInvalidParams, "selector must be 4 bytes")
 	}
 	allowed := false
 	for _, fn := range contract.Functions {
@@ -604,11 +692,10 @@ func (h *Handler) ensureAllowedTarget(c *gin.Context, reqID any, pm *store.Payma
 		}
 	}
 	if !allowed {
-		c.JSON(http.StatusOK, rpcErr(reqID, -32000, "function not allowed"))
-		return false
+		return newRPCError(-32000, "function not allowed")
 	}
 	policy.Selector = "0x" + selector
-	return true
+	return nil
 }
 
 func decodeBig(s string) (*big.Int, error) {
@@ -657,18 +744,22 @@ func parseChainID(v any) (*big.Int, error) {
 func (h *Handler) blockTimestamps(ctx context.Context) (uint64, uint64) {
 	if h.eth != nil {
 		block, err := h.eth.BlockByNumber(ctx, nil)
-		println("block", block, block.Time())
 		if err == nil && block != nil {
 			latest := block.Time()
 			parent := latest
 			if block.NumberU64() > 0 {
-				if prev, err := h.eth.BlockByNumber(ctx, new(big.Int).Sub(block.Number(), big.NewInt(1))); err == nil && prev != nil {
+				prevNum := new(big.Int).Sub(block.Number(), big.NewInt(1))
+				if prev, perr := h.eth.BlockByNumber(ctx, prevNum); perr == nil && prev != nil {
 					parent = prev.Time()
 				}
 			}
 			return parent, latest
 		}
-		ginLogf("eth_getBlockByNumber latest failed, fallback to local time")
+		if err != nil {
+			h.logf("eth_getBlockByNumber latest failed: %v", err)
+		} else {
+			h.logf("eth_getBlockByNumber latest returned nil block")
+		}
 	}
 	now := uint64(time.Now().Unix())
 	return now, now
@@ -679,29 +770,34 @@ func (h *Handler) userOpHash(ctx context.Context, entryPoint string, chainID *bi
 		return common.Hash{}, errors.New("entryPoint required")
 	}
 	packed := op.toPacked()
-	logPackedUserOperation("pm_getPaymasterData", packed)
+	h.logPackedUserOperation("pm_getPaymasterData", packed)
 	data, err := entryPointABI.Pack("getUserOpHash", *packed)
 	if err == nil {
-		ginLogf("pm_getPaymasterData packedBytes=%s", hex.EncodeToString(data))
+		h.logf("pm_getPaymasterData packedBytes=%s", hex.EncodeToString(data))
 	}
 	if err != nil {
 		return common.Hash{}, err
 	}
 	addr := common.HexToAddress(entryPoint)
-	res, err := h.eth.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, nil)
-	if err == nil {
-		if len(res) != 32 {
-			return common.Hash{}, errors.New("invalid hash response")
+	if h.eth != nil {
+		res, callErr := h.eth.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, nil)
+		if callErr == nil {
+			if len(res) != 32 {
+				return common.Hash{}, errors.New("invalid hash response")
+			}
+			hash := common.BytesToHash(res)
+			h.logf("entrypoint hash result=%s", hash.Hex())
+			return hash, nil
 		}
-		hash := common.BytesToHash(res)
-		ginLogf("entrypoint hash result=%s", hash.Hex())
-		return hash, nil
+		err = callErr
 	}
-	ginLogf("entrypoint call failed (%v), using local hash", err)
+	if err != nil {
+		h.logf("entrypoint call failed (%v), using local hash", err)
+	}
 	hash, localErr := hashUserOperationLocal(addr, chainID, op)
 	if localErr != nil {
 		return common.Hash{}, localErr
 	}
-	ginLogf("local userOpHash=%s", hash.Hex())
+	h.logf("local userOpHash=%s", hash.Hex())
 	return hash, nil
 }

@@ -33,6 +33,17 @@ func NewHandler(a *auth.Service, r *store.Repository, c config.Config) *Handler 
 	return &Handler{auth: a, repo: r, cfg: c}
 }
 
+// Login godoc
+// @Summary Admin login
+// @Description Authenticates an admin and returns a JWT access token.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body LoginRequest true "Login request"
+// @Success 200 {object} LoginResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/login [post]
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,6 +58,15 @@ func (h *Handler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, LoginResponse{Token: token})
 }
 
+// Me godoc
+// @Summary Get current admin profile
+// @Description Returns the authenticated admin's identifier and username.
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]any
+// @Failure 401 {object} map[string]string
+// @Router /api/v1/me [get]
 func (h *Handler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":       c.GetUint("adminID"),
@@ -54,6 +74,20 @@ func (h *Handler) Me(c *gin.Context) {
 	})
 }
 
+// CreatePaymaster godoc
+// @Summary Create a new paymaster configuration
+// @Description Registers a paymaster entry-point association and optional user whitelist.
+// @Tags Paymasters
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body CreatePaymasterRequest true "Paymaster payload"
+// @Success 201 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters [post]
 func (h *Handler) CreatePaymaster(c *gin.Context) {
 	var req CreatePaymasterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -117,6 +151,14 @@ func (h *Handler) CreatePaymaster(c *gin.Context) {
 	c.JSON(http.StatusCreated, paymasterDTO(pm))
 }
 
+// ListPaymasters godoc
+// @Summary List paymasters for the authenticated admin
+// @Tags Paymasters
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {array} map[string]any
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters [get]
 func (h *Handler) ListPaymasters(c *gin.Context) {
 	adminID := c.GetUint("adminID")
 	list, err := h.repo.ListPaymasters(c.Request.Context(), adminID)
@@ -131,6 +173,15 @@ func (h *Handler) ListPaymasters(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// GetPaymaster godoc
+// @Summary Get the authenticated admin's paymaster details
+// @Tags Paymasters
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]any
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me [get]
 func (h *Handler) GetPaymaster(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -156,6 +207,18 @@ func (h *Handler) GetPaymaster(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// UpdatePaymaster godoc
+// @Summary Update paymaster configuration
+// @Tags Paymasters
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body UpdatePaymasterRequest true "Update payload"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me [patch]
 func (h *Handler) UpdatePaymaster(c *gin.Context) {
 	var req UpdatePaymasterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -195,6 +258,18 @@ func (h *Handler) UpdatePaymaster(c *gin.Context) {
 	c.JSON(http.StatusOK, paymasterDTO(*pm))
 }
 
+// AddContract godoc
+// @Summary Add or update a contract whitelist entry
+// @Tags Contracts
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body AddContractRequest true "Contract payload"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/contracts [post]
 func (h *Handler) AddContract(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -251,6 +326,15 @@ func (h *Handler) AddContract(c *gin.Context) {
 	c.JSON(status, contractDTO(*contract))
 }
 
+// ListContracts godoc
+// @Summary List whitelisted contracts for the paymaster
+// @Tags Contracts
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {array} map[string]any
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/contracts [get]
 func (h *Handler) ListContracts(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -268,6 +352,19 @@ func (h *Handler) ListContracts(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// UpdateContract godoc
+// @Summary Update a contract whitelist entry
+// @Tags Contracts
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param contractId path int true "Contract ID"
+// @Param request body UpdateContractRequest true "Update payload"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/contracts/{contractId} [patch]
 func (h *Handler) UpdateContract(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -314,6 +411,16 @@ func (h *Handler) UpdateContract(c *gin.Context) {
 	c.JSON(http.StatusOK, contractDTO(*contract))
 }
 
+// DeleteContract godoc
+// @Summary Remove a contract whitelist entry
+// @Tags Contracts
+// @Security BearerAuth
+// @Produce json
+// @Param contractId path int true "Contract ID"
+// @Success 204 {string} string ""
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/contracts/{contractId} [delete]
 func (h *Handler) DeleteContract(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -347,6 +454,15 @@ func (h *Handler) DeleteContract(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ListUsers godoc
+// @Summary List whitelisted user addresses
+// @Tags Users
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {array} string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/users [get]
 func (h *Handler) ListUsers(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -361,6 +477,19 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, addresses)
 }
 
+// AddUser godoc
+// @Summary Add a user to the paymaster whitelist
+// @Tags Users
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body AddUserRequest true "User payload"
+// @Success 201 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/users [post]
 func (h *Handler) AddUser(c *gin.Context) {
 	var req AddUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -399,6 +528,17 @@ func (h *Handler) AddUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"address": addr})
 }
 
+// DeleteUser godoc
+// @Summary Remove a user from the paymaster whitelist
+// @Tags Users
+// @Security BearerAuth
+// @Produce json
+// @Param address path string true "User address"
+// @Success 204 {string} string ""
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/users/{address} [delete]
 func (h *Handler) DeleteUser(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -420,6 +560,18 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ReplaceUsers godoc
+// @Summary Replace the entire paymaster user whitelist
+// @Tags Users
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body ReplaceUsersRequest true "User addresses"
+// @Success 200 {array} string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/users [patch]
 func (h *Handler) ReplaceUsers(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -437,6 +589,15 @@ func (h *Handler) ReplaceUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, usersToSlice(users))
 }
 
+// ListOperations godoc
+// @Summary List recorded user operations for the paymaster
+// @Tags Operations
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {array} map[string]any
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/paymasters/me/operations [get]
 func (h *Handler) ListOperations(c *gin.Context) {
 	pm, ok := h.loadMyPaymaster(c)
 	if !ok {
@@ -717,6 +878,17 @@ func usersToSlice(users []store.UserWhitelist) []string {
 	return out
 }
 
+// GetContractArtifact godoc
+// @Summary Retrieve compiled contract artifacts by name
+// @Tags Contracts
+// @Security BearerAuth
+// @Produce json
+// @Param name path string true "Contract name"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/contracts/{name} [get]
 func (h *Handler) GetContractArtifact(c *gin.Context) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {

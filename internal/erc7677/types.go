@@ -3,18 +3,24 @@ package erc7677
 import "encoding/json"
 
 type rpcRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params"`
+ 	JSONRPC string          `json:"jsonrpc"`
+ 	ID      any             `json:"id"`
+ 	Method  string          `json:"method"`
+ 	Params  json.RawMessage `json:"params"`
 }
 
+// JSONRPCRequest is an alias used for Swagger documentation.
+type JSONRPCRequest = rpcRequest
+
 type rpcResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      any         `json:"id"`
-	Result  any         `json:"result,omitempty"`
-	Error   *rpcErrBody `json:"error,omitempty"`
+ 	JSONRPC string      `json:"jsonrpc"`
+ 	ID      any         `json:"id"`
+ 	Result  any         `json:"result,omitempty"`
+ 	Error   *rpcErrBody `json:"error,omitempty"`
 }
+
+// JSONRPCResponse is an alias used for Swagger documentation.
+type JSONRPCResponse = rpcResponse
 
 type rpcErrBody struct {
 	Code    int    `json:"code"`
