@@ -14,6 +14,7 @@ import (
 	cfgpkg "github.com/0xPexy/sentra-backend/internal/config"
 	"github.com/0xPexy/sentra-backend/internal/erc7677"
 	pipeline "github.com/0xPexy/sentra-backend/internal/indexer/pipeline"
+	indexersvc "github.com/0xPexy/sentra-backend/internal/indexer/service"
 	"github.com/0xPexy/sentra-backend/internal/server"
 	"github.com/0xPexy/sentra-backend/internal/store"
 	"github.com/ethereum/go-ethereum/common"
@@ -39,6 +40,8 @@ func main() {
 	store.EnsureAdmin(db, cfg.Admin.Username, cfg.Admin.Password)
 
 	repo := store.NewRepository(db)
+	eventHub := server.NewEventHub(log.New(log.Writer(), "events: ", log.LstdFlags))
+	indexerReader := indexersvc.NewReader(repo)
 	authSvc := auth.NewService(cfg.Auth.JWTSecret, repo, cfg.Auth.JWTTTL, cfg.Auth.DevToken)
 	if cfg.Auth.DevToken != "" {
 		store.EnsureDevAdmin(db, auth.DevAdminID(), cfg.Auth.DevAdminUser)
@@ -73,18 +76,19 @@ func main() {
 			DecodeWorkerCount: cfg.Indexer.DecodeWorkers,
 			WriteWorkerCount:  cfg.Indexer.WriteWorkers,
 		}
-		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo), ethClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
+		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo, eventHub), ethClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
 	}
 
 	pmLogger := log.New(log.Writer(), "pm: ", log.LstdFlags)
 	pm := erc7677.NewHandler(cfg, repo, policy, signer, ethClient, pmLogger)
 	adminH := admin.NewHandler(authSvc, repo, cfg)
 
-	r := server.NewRouter(cfg, authSvc, pm, adminH)
+	r := server.NewRouter(cfg, authSvc, pm, adminH, repo, indexerReader, eventHub)
 	srv := server.NewHTTP(cfg.Server.HTTPAddr, r)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go eventHub.Run(ctx)
 	if sentraIndexer != nil {
 		go func() {
 			if err := sentraIndexer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

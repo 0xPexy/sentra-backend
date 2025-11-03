@@ -39,4 +39,6 @@ tmp/
 .vscode/
 
 data/
-server
+/server
+/server/
+!internal/server/

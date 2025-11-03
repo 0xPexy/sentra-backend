@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/errgroup"
 )
@@ -36,6 +37,7 @@ func New(cfg Config, repo Repo, client EthClient, logger *log.Logger) *Indexer {
 
 func (i *Indexer) Run(ctx context.Context) error {
 	i.logf("Indexer starting: chain=%d entryPoint=%s", i.cfg.ChainID, i.cfg.EntryPoint.Hex())
+	// Temporarily disabled call metadata backfill; re-enable once decoder handles all EntryPoint variants.
 	g, ctx := errgroup.WithContext(ctx)
 
 	decodeCh := make(chan types.Log, i.cfg.decodeWorkerCount()*32)
@@ -124,6 +126,42 @@ func (i *Indexer) runWriteWorker(ctx context.Context, in <-chan writeRequest) er
 		return err
 	}
 	return nil
+}
+
+func (i *Indexer) backfillCallMetadata(ctx context.Context) error {
+	if i.decoder == nil || i.decoder.callDec == nil {
+		return nil
+	}
+	for {
+		events, err := i.repo.ListUserOpsMissingCallData(ctx, i.cfg.ChainID, 100)
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return nil
+		}
+		for _, ev := range events {
+			txHash := common.HexToHash(ev.TxHash)
+			target, selector, err := i.decoder.callDec.extract(ctx, txHash, ev.UserOpHash)
+			if err != nil {
+				i.logf("backfill metadata failed: hash=%s err=%v", ev.UserOpHash, err)
+				continue
+			}
+			if target == "" && selector == "" {
+				continue
+			}
+			updated := ev
+			if target != "" {
+				updated.Target = target
+			}
+			if selector != "" {
+				updated.CallSelector = selector
+			}
+			if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
+				i.logf("backfill persist failed: hash=%s err=%v", updated.UserOpHash, err)
+			}
+		}
+	}
 }
 
 type writeRequest struct {

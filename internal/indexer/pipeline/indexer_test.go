@@ -320,10 +320,11 @@ func topicFromAddress(addr common.Address) common.Hash {
 }
 
 type stubEthClient struct {
-	mu         sync.Mutex
-	batches    [][]types.Log
-	safeHead   uint64
-	blockTimes map[uint64]uint64
+	mu           sync.Mutex
+	batches      [][]types.Log
+	safeHead     uint64
+	blockTimes   map[uint64]uint64
+	transactions map[common.Hash]*types.Transaction
 }
 
 func newStubEthClient(logs []types.Log, safeHead uint64, blockTimes map[uint64]uint64) *stubEthClient {
@@ -332,9 +333,10 @@ func newStubEthClient(logs []types.Log, safeHead uint64, blockTimes map[uint64]u
 		batches = append(batches, append([]types.Log(nil), logs...))
 	}
 	return &stubEthClient{
-		batches:    batches,
-		safeHead:   safeHead,
-		blockTimes: blockTimes,
+		batches:      batches,
+		safeHead:     safeHead,
+		blockTimes:   blockTimes,
+		transactions: make(map[common.Hash]*types.Transaction),
 	}
 }
 
@@ -383,6 +385,15 @@ func (s *stubEthClient) setSafeHead(head uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.safeHead = head
+}
+
+func (s *stubEthClient) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if tx, ok := s.transactions[hash]; ok {
+		return tx, false, nil
+	}
+	return nil, false, ethereum.NotFound
 }
 
 type mockRepo struct {
@@ -467,6 +478,25 @@ func (m *mockRepo) UpsertSponsorship(ctx context.Context, s *store.Sponsorship) 
 	cloned := *s
 	m.sponsors[s.UserOpHash] = &cloned
 	return nil
+}
+
+func (m *mockRepo) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []store.UserOperationEvent
+	for _, ev := range m.events {
+		if ev.ChainID != chainID {
+			continue
+		}
+		if ev.CallSelector != "" {
+			continue
+		}
+		out = append(out, *ev)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (m *mockRepo) eventCount() int {

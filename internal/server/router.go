@@ -7,13 +7,15 @@ import (
 	"github.com/0xPexy/sentra-backend/internal/auth"
 	"github.com/0xPexy/sentra-backend/internal/config"
 	"github.com/0xPexy/sentra-backend/internal/erc7677"
+	indexersvc "github.com/0xPexy/sentra-backend/internal/indexer/service"
+	"github.com/0xPexy/sentra-backend/internal/store"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler) *gin.Engine {
+func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler, repo *store.Repository, reader *indexersvc.Reader, hub *EventHub) *gin.Engine {
 	r := gin.New()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -26,8 +28,10 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	addrH := newAddressHandler(cfg)
+	idxH := newIndexerHandler(cfg, repo, reader, hub)
 	api := r.Group("/api/v1")
 	api.GET("/addresses", addrH.LookupAddress)
+	api.GET("/events", idxH.StreamEvents)
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)
@@ -35,6 +39,9 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	{
 		ad.POST("/erc7677", pm.HandleJSONRPC)
 		ad.GET("/me", adminH.Me)
+		ad.GET("/stats/overview", idxH.StatsOverview)
+		ad.GET("/paymasters/:address/ops", idxH.SponsoredOps)
+		ad.GET("/ops/:userOpHash", idxH.UserOperationDetail)
 
 		ad.POST("/paymasters", adminH.CreatePaymaster)
 		ad.GET("/paymasters", adminH.ListPaymasters)

@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math"
+	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,6 +93,8 @@ type UserOperationItem struct {
 	UserOpHash    string    `json:"userOpHash"`
 	Sender        string    `json:"sender"`
 	Paymaster     string    `json:"paymaster,omitempty"`
+	Target        string    `json:"target,omitempty"`
+	Selector      string    `json:"selector,omitempty"`
 	Status        string    `json:"status"`
 	BlockNumber   uint64    `json:"blockNumber"`
 	LogIndex      uint      `json:"logIndex"`
@@ -134,6 +139,8 @@ func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParam
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
+			Target:        row.Target,
+			Selector:      row.CallSelector,
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -169,9 +176,10 @@ func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParam
 
 type UserOperationDetail struct {
 	UserOperationItem
-	Nonce  string            `json:"nonce"`
-	Events []UserOpEventInfo `json:"events"`
-	Revert *RevertInfo       `json:"revert,omitempty"`
+	Nonce       string            `json:"nonce"`
+	Events      []UserOpEventInfo `json:"events"`
+	Revert      *RevertInfo       `json:"revert,omitempty"`
+	Sponsorship *SponsorshipInfo  `json:"sponsorship,omitempty"`
 }
 
 type UserOpEventInfo struct {
@@ -184,6 +192,41 @@ type RevertInfo struct {
 	Selector string `json:"selector"`
 	Message  string `json:"message,omitempty"`
 	Raw      string `json:"raw"`
+}
+
+type SponsorshipInfo struct {
+	ValidUntil string `json:"validUntil"`
+	ValidAfter string `json:"validAfter"`
+}
+
+type PaymasterOverview struct {
+	TotalSponsoredOps     int64   `json:"totalSponsoredOps"`
+	SuccessRatePercent    float64 `json:"successRate"`
+	TotalSponsoredGasGwei string  `json:"totalSponsoredGasCost"`
+	AvgActualGasUsed      float64 `json:"avgActualGasUsed"`
+}
+
+type SponsoredOpsParams struct {
+	ChainID   uint64
+	Paymaster string
+	Cursor    string
+	Limit     int
+}
+
+type SponsoredOpItem struct {
+	UserOpHash  string    `json:"userOpHash"`
+	Sender      string    `json:"sender"`
+	Target      string    `json:"target,omitempty"`
+	Selector    string    `json:"selector,omitempty"`
+	Status      string    `json:"status"`
+	BlockNumber uint64    `json:"blockNumber"`
+	LogIndex    uint      `json:"logIndex"`
+	BlockTime   time.Time `json:"blockTime"`
+}
+
+type SponsoredOpsResult struct {
+	Items      []SponsoredOpItem `json:"items"`
+	NextCursor string            `json:"nextCursor,omitempty"`
 }
 
 func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHash string) (*UserOperationDetail, error) {
@@ -202,6 +245,8 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		UserOpHash:    row.UserOpHash,
 		Sender:        row.Sender,
 		Paymaster:     row.Paymaster,
+		Target:        row.Target,
+		Selector:      row.CallSelector,
 		Status:        status,
 		BlockNumber:   row.BlockNumber,
 		LogIndex:      row.LogIndex,
@@ -218,6 +263,13 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 			Selector: selector,
 			Message:  message,
 			Raw:      row.RevertReason,
+		}
+	}
+	var sponsorship *SponsorshipInfo
+	if row.ValidAfter != "" || row.ValidUntil != "" {
+		sponsorship = &SponsorshipInfo{
+			ValidAfter: row.ValidAfter,
+			ValidUntil: row.ValidUntil,
 		}
 	}
 	eventLog := []UserOpEventInfo{{
@@ -238,6 +290,7 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		Nonce:             row.Nonce,
 		Events:            eventLog,
 		Revert:            revertInfo,
+		Sponsorship:       sponsorship,
 	}, nil
 }
 
@@ -274,6 +327,8 @@ func (r *Reader) ListPaymasterOperations(ctx context.Context, params PaymasterOp
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
+			Target:        row.Target,
+			Selector:      row.CallSelector,
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -305,6 +360,92 @@ func (r *Reader) ListPaymasterOperations(ctx context.Context, params PaymasterOp
 		HasNext:  hasNext,
 		NextPage: nextPage,
 	}, nil
+}
+
+func (r *Reader) PaymasterOverview(ctx context.Context, chainID uint64, paymaster string) (*PaymasterOverview, error) {
+	row, err := r.repo.GetPaymasterOverviewStats(ctx, chainID, paymaster)
+	if err != nil {
+		return nil, err
+	}
+	successRate := 0.0
+	if row.TotalOps > 0 {
+		successRate = float64(row.SuccessOps) / float64(row.TotalOps) * 100
+		successRate = math.Round(successRate*100) / 100
+	}
+	totalGwei := "0"
+	if row.TotalGasCost > 0 {
+		wei := big.NewInt(row.TotalGasCost)
+		gwei := new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(1e9))
+		totalGwei = strings.TrimRight(strings.TrimRight(gwei.Text('f', 6), "0"), ".")
+		if totalGwei == "" {
+			totalGwei = "0"
+		}
+	}
+	return &PaymasterOverview{
+		TotalSponsoredOps:     row.TotalOps,
+		SuccessRatePercent:    successRate,
+		TotalSponsoredGasGwei: totalGwei,
+		AvgActualGasUsed:      row.AvgGasUsed,
+	}, nil
+}
+
+func (r *Reader) SponsoredOps(ctx context.Context, params SponsoredOpsParams) (*SponsoredOpsResult, error) {
+	var cursorBlock *uint64
+	var cursorLog *uint
+	if params.Cursor != "" {
+		block, logIdx, err := parseCursor(params.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		cursorBlock = &block
+		cursorLog = &logIdx
+	}
+	limit := params.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := r.repo.ListSponsoredOps(ctx, store.SponsoredOpsParams{
+		ChainID:     params.ChainID,
+		Paymaster:   params.Paymaster,
+		Limit:       limit + 1,
+		CursorBlock: cursorBlock,
+		CursorLog:   cursorLog,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var nextCursor string
+	if len(rows) > limit {
+		last := rows[len(rows)-1]
+		nextCursor = formatCursor(last.BlockNumber, last.LogIndex)
+		rows = rows[:limit]
+	}
+	items := make([]SponsoredOpItem, 0, len(rows))
+	for _, row := range rows {
+		status := "failed"
+		if row.Success {
+			status = "success"
+		}
+		selector := row.CallSelector
+		if selector == "" && len(row.OpSelector) > 0 {
+			selector = "0x" + hex.EncodeToString(row.OpSelector)
+		}
+		target := row.Target
+		if row.OpTarget != nil && *row.OpTarget != "" {
+			target = strings.ToLower(*row.OpTarget)
+		}
+		items = append(items, SponsoredOpItem{
+			UserOpHash:  row.UserOpHash,
+			Sender:      row.Sender,
+			Target:      target,
+			Selector:    selector,
+			Status:      status,
+			BlockNumber: row.BlockNumber,
+			LogIndex:    row.LogIndex,
+			BlockTime:   row.BlockTime,
+		})
+	}
+	return &SponsoredOpsResult{Items: items, NextCursor: nextCursor}, nil
 }
 
 type OverviewStatsParams struct {
@@ -385,6 +526,8 @@ func (r *Reader) SenderReport(ctx context.Context, params store.SenderOpsParams)
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
+			Target:        row.Target,
+			Selector:      row.CallSelector,
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -443,6 +586,26 @@ func decodeRevert(raw string) (string, string) {
 		}
 	}
 	return selector, ""
+}
+
+func parseCursor(raw string) (uint64, uint, error) {
+	parts := strings.Split(raw, ":")
+	if len(parts) != 2 {
+		return 0, 0, errors.New("invalid cursor")
+	}
+	block, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("invalid cursor block")
+	}
+	idx, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("invalid cursor index")
+	}
+	return block, uint(idx), nil
+}
+
+func formatCursor(block uint64, logIndex uint) string {
+	return strconv.FormatUint(block, 10) + ":" + strconv.FormatUint(uint64(logIndex), 10)
 }
 
 var revertErrorArgs = abi.Arguments{{Type: mustABIType("string")}}

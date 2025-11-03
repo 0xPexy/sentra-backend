@@ -248,6 +248,7 @@ func (r *Repository) UpsertUserOperationEvent(ctx context.Context, event *UserOp
 	event.Sender = strings.ToLower(event.Sender)
 	event.Paymaster = strings.ToLower(event.Paymaster)
 	event.Target = strings.ToLower(event.Target)
+	event.CallSelector = strings.ToLower(event.CallSelector)
 	event.TxHash = strings.ToLower(event.TxHash)
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_op_hash"}},
@@ -255,6 +256,7 @@ func (r *Repository) UpsertUserOperationEvent(ctx context.Context, event *UserOp
 			"sender":          event.Sender,
 			"paymaster":       event.Paymaster,
 			"target":          event.Target,
+			"call_selector":   event.CallSelector,
 			"nonce":           event.Nonce,
 			"success":         event.Success,
 			"actual_gas_cost": event.ActualGasCost,

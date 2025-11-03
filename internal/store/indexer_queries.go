@@ -37,6 +37,8 @@ type UserOpListRow struct {
 type UserOpDetailRow struct {
 	UserOperationEvent
 	RevertReason string
+	ValidUntil   string
+	ValidAfter   string
 }
 
 type RangeQuery struct {
@@ -50,6 +52,66 @@ type AggregatedStat struct {
 	Value string
 }
 
+type PaymasterOverviewRow struct {
+	TotalOps     int64
+	SuccessOps   int64
+	TotalGasCost int64
+	AvgGasUsed   float64
+}
+
+func (r *Repository) GetPaymasterOverviewStats(ctx context.Context, chainID uint64, paymaster string) (*PaymasterOverviewRow, error) {
+	addr := normalizeAddr(paymaster)
+	var row PaymasterOverviewRow
+	err := r.db.WithContext(ctx).
+		Table("user_operation_events AS e").
+		Select("COUNT(*) AS total_ops, SUM(CASE WHEN e.success THEN 1 ELSE 0 END) AS success_ops, COALESCE(SUM(CAST(e.actual_gas_cost AS INTEGER)), 0) AS total_gas_cost, COALESCE(AVG(CAST(e.actual_gas_used AS REAL)), 0) AS avg_gas_used").
+		Where("e.chain_id = ? AND e.paymaster = ?", chainID, addr).
+		Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+type SponsoredOpsParams struct {
+	ChainID     uint64
+	Paymaster   string
+	Limit       int
+	CursorBlock *uint64
+	CursorLog   *uint
+}
+
+type SponsoredOpRow struct {
+	UserOperationEvent
+	OpSelector []byte  `gorm:"column:op_selector"`
+	OpTarget   *string `gorm:"column:op_target"`
+}
+
+func (r *Repository) ListSponsoredOps(ctx context.Context, params SponsoredOpsParams) ([]SponsoredOpRow, error) {
+	addr := normalizeAddr(params.Paymaster)
+	query := r.db.WithContext(ctx).
+		Table("user_operation_events AS e").
+		Select("e.*, o.selector AS op_selector, o.target AS op_target").
+		Joins("LEFT JOIN operations AS o ON o.user_op_hash = e.user_op_hash").
+		Where("e.chain_id = ? AND e.paymaster = ?", params.ChainID, addr)
+
+	if params.CursorBlock != nil && params.CursorLog != nil {
+		query = query.Where("(e.block_number < ?) OR (e.block_number = ? AND e.log_index < ?)", *params.CursorBlock, *params.CursorBlock, *params.CursorLog)
+	}
+
+	limit := params.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	var rows []SponsoredOpRow
+	err := query.
+		Order("e.block_number DESC, e.log_index DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
+
 func normalizeAddr(s string) string {
 	ss := strings.TrimSpace(s)
 	if ss == "" {
@@ -59,6 +121,20 @@ func normalizeAddr(s string) string {
 		ss = "0x" + ss
 	}
 	return strings.ToLower(ss)
+}
+
+func (r *Repository) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]UserOperationEvent, error) {
+	query := r.db.WithContext(ctx).
+		Where("chain_id = ? AND (call_selector IS NULL OR call_selector = '')", chainID).
+		Order("block_number ASC, log_index ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var rows []UserOperationEvent
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (r *Repository) GetIndexerStatus(ctx context.Context, chainID uint64) (*IndexerStatusRow, error) {
@@ -138,8 +214,9 @@ func (r *Repository) GetUserOperationDetail(ctx context.Context, chainID uint64,
 	var row UserOpDetailRow
 	err := r.db.WithContext(ctx).
 		Table("user_operation_events AS e").
-		Select("e.*, r.revert_reason").
+		Select("e.*, r.revert_reason, s.valid_until, s.valid_after").
 		Joins("LEFT JOIN user_operation_reverts AS r ON r.user_op_hash = e.user_op_hash AND r.chain_id = e.chain_id").
+		Joins("LEFT JOIN sponsorships AS s ON s.user_op_hash = e.user_op_hash AND s.chain_id = e.chain_id").
 		Where("e.chain_id = ? AND e.user_op_hash = ?", chainID, hash).
 		First(&row).Error
 	if err != nil {

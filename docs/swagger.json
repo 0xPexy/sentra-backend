@@ -146,6 +146,18 @@
                 }
             }
         },
+        "/api/v1/events": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Stream user operation events",
+                "responses": {}
+            }
+        },
         "/api/v1/me": {
             "get": {
                 "security": [
@@ -172,6 +184,64 @@
                         "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/internal_admin.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ops/{userOpHash}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Operations"
+                ],
+                "summary": "Get user operation detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User operation hash",
+                        "name": "userOpHash",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Chain ID override",
+                        "name": "chain_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
                         }
                     }
                 }
@@ -812,6 +882,106 @@
                 }
             }
         },
+        "/api/v1/paymasters/{address}/ops": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Operations"
+                ],
+                "summary": "List sponsored user operations for a paymaster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymaster address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Chain ID override",
+                        "name": "chain_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (1-100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor in blockNumber:logIndex format",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/stats/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stats"
+                ],
+                "summary": "Paymaster stats overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.PaymasterOverview"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates an admin and returns a JWT access token.",
@@ -860,6 +1030,172 @@
         }
     },
     "definitions": {
+        "github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.PaymasterOverview": {
+            "type": "object",
+            "properties": {
+                "avgActualGasUsed": {
+                    "type": "number"
+                },
+                "successRate": {
+                    "type": "number"
+                },
+                "totalSponsoredGasCost": {
+                    "type": "string"
+                },
+                "totalSponsoredOps": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.RevertInfo": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "raw": {
+                    "type": "string"
+                },
+                "selector": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpItem": {
+            "type": "object",
+            "properties": {
+                "blockNumber": {
+                    "type": "integer"
+                },
+                "blockTime": {
+                    "type": "string"
+                },
+                "logIndex": {
+                    "type": "integer"
+                },
+                "selector": {
+                    "type": "string"
+                },
+                "sender": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "userOpHash": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpsResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpItem"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.SponsorshipInfo": {
+            "type": "object",
+            "properties": {
+                "validAfter": {
+                    "type": "string"
+                },
+                "validUntil": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.UserOpEventInfo": {
+            "type": "object",
+            "properties": {
+                "blockNumber": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationDetail": {
+            "type": "object",
+            "properties": {
+                "actualGasCost": {
+                    "type": "string"
+                },
+                "actualGasUsed": {
+                    "type": "string"
+                },
+                "blockNumber": {
+                    "type": "integer"
+                },
+                "blockTime": {
+                    "type": "string"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOpEventInfo"
+                    }
+                },
+                "logIndex": {
+                    "type": "integer"
+                },
+                "nonce": {
+                    "type": "string"
+                },
+                "paymaster": {
+                    "type": "string"
+                },
+                "revert": {
+                    "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.RevertInfo"
+                },
+                "revertReason": {
+                    "type": "string"
+                },
+                "selector": {
+                    "type": "string"
+                },
+                "sender": {
+                    "type": "string"
+                },
+                "sponsorship": {
+                    "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.SponsorshipInfo"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                },
+                "userOpHash": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_admin.AddContractRequest": {
             "type": "object",
             "properties": {

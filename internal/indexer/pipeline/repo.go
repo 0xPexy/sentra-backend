@@ -14,14 +14,20 @@ type Repo interface {
 	UpsertAccountDeployment(ctx context.Context, dep *store.AccountDeployment) error
 	UpsertSimpleAccountInitialization(ctx context.Context, init *store.SimpleAccountInitialization) error
 	UpsertSponsorship(ctx context.Context, s *store.Sponsorship) error
+	ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error)
 }
 
 type StoreAdapter struct {
 	repo *store.Repository
+	sink EventSink
 }
 
-func NewStoreAdapter(repo *store.Repository) *StoreAdapter {
-	return &StoreAdapter{repo: repo}
+type EventSink interface {
+	PublishUserOperation(event *store.UserOperationEvent)
+}
+
+func NewStoreAdapter(repo *store.Repository, sink EventSink) *StoreAdapter {
+	return &StoreAdapter{repo: repo, sink: sink}
 }
 
 func (a *StoreAdapter) GetLogCursor(ctx context.Context, chainID uint64, address string) (*store.LogCursor, error) {
@@ -33,7 +39,14 @@ func (a *StoreAdapter) UpsertLogCursor(ctx context.Context, cursor *store.LogCur
 }
 
 func (a *StoreAdapter) UpsertUserOperationEvent(ctx context.Context, event *store.UserOperationEvent) error {
-	return a.repo.UpsertUserOperationEvent(ctx, event)
+	if err := a.repo.UpsertUserOperationEvent(ctx, event); err != nil {
+		return err
+	}
+	if a.sink != nil {
+		clone := *event
+		a.sink.PublishUserOperation(&clone)
+	}
+	return nil
 }
 
 func (a *StoreAdapter) UpsertUserOperationRevert(ctx context.Context, revert *store.UserOperationRevert) error {
@@ -50,4 +63,8 @@ func (a *StoreAdapter) UpsertSimpleAccountInitialization(ctx context.Context, in
 
 func (a *StoreAdapter) UpsertSponsorship(ctx context.Context, s *store.Sponsorship) error {
 	return a.repo.UpsertSponsorship(ctx, s)
+}
+
+func (a *StoreAdapter) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {
+	return a.repo.ListUserOpsMissingCallData(ctx, chainID, limit)
 }

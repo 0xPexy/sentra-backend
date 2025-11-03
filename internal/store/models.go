@@ -94,6 +94,7 @@ type UserOperationEvent struct {
 	TxHash        string `gorm:"size:66;uniqueIndex:idx_userop_txlog"`
 	BlockNumber   uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
 	LogIndex      uint   `gorm:"uniqueIndex:idx_userop_txlog"`
+	CallSelector  string `gorm:"size:10"`
 	BlockTime     time.Time
 	CreatedAt     time.Time `gorm:"autoCreateTime"`
 	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
