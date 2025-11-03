@@ -105,8 +105,10 @@ func (s *stubEthClient) CallContract(ctx context.Context, msg ethereum.CallMsg, 
 func newTestHandler(t *testing.T, repo paymasterRepo, signer policySigner, eth ethClient) *Handler {
 	t.Helper()
 	cfg := config.Config{
-		PMValGas:  120_000,
-		PostOpGas: 80_000,
+		Paymaster: config.PaymasterConfig{
+			ValidationGas: 120_000,
+			PostOpGas:     80_000,
+		},
 	}
 	logger := log.New(io.Discard, "", 0)
 	return newHandler(cfg, repo, stubValidity{d: 2 * time.Minute}, signer, eth, logger)

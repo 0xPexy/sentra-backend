@@ -25,10 +25,13 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	addrH := newAddressHandler(cfg)
+	api := r.Group("/api/v1")
+	api.GET("/addresses", addrH.LookupAddress)
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)
-	ad := r.Group("/api/v1", guard)
+	ad := api.Group("", guard)
 	{
 		ad.POST("/erc7677", pm.HandleJSONRPC)
 		ad.GET("/me", adminH.Me)

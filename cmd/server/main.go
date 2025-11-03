@@ -23,7 +23,7 @@ import (
 // @title Sentinel 4337 Backend API
 // @version 1.0
 // @description API documentation for the Sentinel 4337 backend service.
-// @BasePath /api/v1
+// @BasePath /
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
@@ -32,19 +32,19 @@ func main() {
 	docs.SwaggerInfo.Version = "1.0"
 	docs.SwaggerInfo.Title = "Sentinel 4337 Backend API"
 	docs.SwaggerInfo.Description = "API documentation for the Sentinel 4337 backend service."
-	docs.SwaggerInfo.BasePath = "/api/v1"
+	docs.SwaggerInfo.BasePath = "/"
 
-	db := store.OpenSQLite(cfg.SQLiteDSN)
+	db := store.OpenSQLite(cfg.Database.SQLiteDSN)
 	store.AutoMigrate(db)
-	store.EnsureAdmin(db, cfg.AdminUsername, cfg.AdminPassword)
+	store.EnsureAdmin(db, cfg.Admin.Username, cfg.Admin.Password)
 
 	repo := store.NewRepository(db)
-	authSvc := auth.NewService(cfg.JWTSecret, repo, cfg.JWTTTL, cfg.DevToken)
-	if cfg.DevToken != "" {
-		store.EnsureDevAdmin(db, auth.DevAdminID(), cfg.DevAdminUser)
+	authSvc := auth.NewService(cfg.Auth.JWTSecret, repo, cfg.Auth.JWTTTL, cfg.Auth.DevToken)
+	if cfg.Auth.DevToken != "" {
+		store.EnsureDevAdmin(db, auth.DevAdminID(), cfg.Auth.DevAdminUser)
 	}
 	policy := erc7677.NewPolicy(repo, cfg)
-	ethClient, err := ethclient.Dial(cfg.ChainRPCURL)
+	ethClient, err := ethclient.Dial(cfg.Chain.RPCURL)
 	if err != nil {
 		log.Fatalf("failed to connect chain rpc: %v", err)
 	}
@@ -52,26 +52,26 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to get chain id: %v", err)
 	}
-	signer := erc7677.NewSigner(cfg.PolicySK, chainID)
+	signer := erc7677.NewSigner(cfg.Paymaster.PolicyPrivateKey, chainID)
 
 	var sentraIndexer *pipeline.Indexer
-	if cfg.IndexerEnabled {
-		entryPointAddr := common.HexToAddress(cfg.EntryPoint)
+	if cfg.Indexer.Enabled {
+		entryPointAddr := common.HexToAddress(cfg.Chain.EntryPoint)
 		var paymasterAddrPtr *common.Address
-		if cfg.PaymasterAddr != "" {
-			addr := common.HexToAddress(cfg.PaymasterAddr)
+		if cfg.Paymaster.Address != "" {
+			addr := common.HexToAddress(cfg.Paymaster.Address)
 			paymasterAddrPtr = &addr
 		}
 		idxCfg := pipeline.Config{
 			ChainID:           chainID.Uint64(),
 			EntryPoint:        entryPointAddr,
 			Paymaster:         paymasterAddrPtr,
-			DeploymentBlock:   cfg.EntryPointDeployBlock,
-			ChunkSize:         cfg.IndexerChunkSize,
-			Confirmations:     cfg.IndexerConfirmations,
-			PollInterval:      cfg.IndexerPollInterval,
-			DecodeWorkerCount: cfg.IndexerDecodeWorker,
-			WriteWorkerCount:  cfg.IndexerWriteWorker,
+			DeploymentBlock:   cfg.Chain.EntryPointDeployBlock,
+			ChunkSize:         cfg.Indexer.ChunkSize,
+			Confirmations:     cfg.Indexer.Confirmations,
+			PollInterval:      cfg.Indexer.PollInterval,
+			DecodeWorkerCount: cfg.Indexer.DecodeWorkers,
+			WriteWorkerCount:  cfg.Indexer.WriteWorkers,
 		}
 		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo), ethClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
 	}
@@ -81,7 +81,7 @@ func main() {
 	adminH := admin.NewHandler(authSvc, repo, cfg)
 
 	r := server.NewRouter(cfg, authSvc, pm, adminH)
-	srv := server.NewHTTP(cfg.HTTPAddr, r)
+	srv := server.NewHTTP(cfg.Server.HTTPAddr, r)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

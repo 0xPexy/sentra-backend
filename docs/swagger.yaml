@@ -1,4 +1,4 @@
-basePath: /api/v1
+basePath: /
 definitions:
   internal_admin.AddContractRequest:
     properties:
@@ -16,11 +16,37 @@ definitions:
       address:
         type: string
     type: object
+  internal_admin.ContractArtifactResponse:
+    properties:
+      abi:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+    type: object
   internal_admin.ContractFunctionInput:
     properties:
       selector:
         type: string
       signature:
+        type: string
+    type: object
+  internal_admin.ContractResponse:
+    properties:
+      address:
+        type: string
+      createdAt:
+        type: string
+      functions:
+        items:
+          $ref: '#/definitions/internal_admin.FunctionResponse'
+        type: array
+      id:
+        type: integer
+      name:
+        type: string
+      updatedAt:
         type: string
     type: object
   internal_admin.CreatePaymasterRequest:
@@ -38,6 +64,24 @@ definitions:
           type: string
         type: array
     type: object
+  internal_admin.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  internal_admin.FunctionResponse:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      selector:
+        type: string
+      signature:
+        type: string
+      updatedAt:
+        type: string
+    type: object
   internal_admin.LoginRequest:
     properties:
       password:
@@ -52,6 +96,73 @@ definitions:
     properties:
       token:
         type: string
+    type: object
+  internal_admin.MeResponse:
+    properties:
+      id:
+        type: integer
+      username:
+        type: string
+    type: object
+  internal_admin.OperationResponse:
+    properties:
+      chainId:
+        type: integer
+      createdAt:
+        type: string
+      gasCostWei:
+        type: string
+      gasUsed:
+        type: string
+      id:
+        type: integer
+      paymasterId:
+        type: integer
+      reason:
+        type: string
+      selector:
+        type: string
+      sender:
+        type: string
+      status:
+        type: string
+      target:
+        type: string
+      txHash:
+        type: string
+      updatedAt:
+        type: string
+      usdcCharged:
+        type: string
+      userOpHash:
+        type: string
+    type: object
+  internal_admin.PaymasterResponse:
+    properties:
+      address:
+        type: string
+      adminId:
+        type: integer
+      chainId:
+        type: integer
+      contracts:
+        items:
+          $ref: '#/definitions/internal_admin.ContractResponse'
+        type: array
+      createdAt:
+        type: string
+      entryPoint:
+        type: string
+      id:
+        type: integer
+      updatedAt:
+        type: string
+      usdPerMaxOp:
+        type: integer
+      users:
+        items:
+          type: string
+        type: array
     type: object
   internal_admin.ReplaceUsersRequest:
     properties:
@@ -82,6 +193,11 @@ definitions:
           type: string
         type: array
     type: object
+  internal_admin.UserAddressResponse:
+    properties:
+      address:
+        type: string
+    type: object
   internal_erc7677.JSONRPCRequest:
     properties:
       id: {}
@@ -110,12 +226,56 @@ definitions:
       message:
         type: string
     type: object
+  internal_server.AddressLookupResponse:
+    properties:
+      address:
+        type: string
+    type: object
+  internal_server.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
 info:
   contact: {}
   description: API documentation for the Sentinel 4337 backend service.
   title: Sentinel 4337 Backend API
   version: "1.0"
 paths:
+  /api/v1/addresses:
+    get:
+      description: 'Returns the configured address for supported contracts: entrypoint,
+        simple_account_factory, paymaster.'
+      parameters:
+      - description: Contract identifier
+        enum:
+        - entrypoint
+        - entry_point
+        - simple_account_factory
+        - factory
+        - paymaster
+        in: query
+        name: contract
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.AddressLookupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_server.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_server.ErrorResponse'
+      summary: Lookup configured contract address
+      tags:
+      - Addresses
   /api/v1/contracts/{name}:
     get:
       parameters:
@@ -130,26 +290,19 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.ContractArtifactResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Retrieve compiled contract artifacts by name
@@ -189,14 +342,11 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.MeResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get current admin profile
@@ -211,15 +361,12 @@ paths:
           description: OK
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/internal_admin.PaymasterResponse'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List paymasters for the authenticated admin
@@ -243,32 +390,23 @@ paths:
         "201":
           description: Created
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.PaymasterResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Create a new paymaster configuration
@@ -282,20 +420,15 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.PaymasterResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get the authenticated admin's paymaster details
@@ -317,26 +450,19 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.PaymasterResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update paymaster configuration
@@ -351,21 +477,16 @@ paths:
           description: OK
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/internal_admin.ContractResponse'
             type: array
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List whitelisted contracts for the paymaster
@@ -387,26 +508,23 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.ContractResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_admin.ContractResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Add or update a contract whitelist entry
@@ -430,15 +548,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Remove a contract whitelist entry
@@ -465,26 +579,19 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_admin.ContractResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update a contract whitelist entry
@@ -499,21 +606,16 @@ paths:
           description: OK
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/internal_admin.OperationResponse'
             type: array
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List recorded user operations for the paymaster
@@ -533,15 +635,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List whitelisted user addresses
@@ -569,21 +667,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Replace the entire paymaster user whitelist
@@ -605,33 +697,23 @@ paths:
         "201":
           description: Created
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.UserAddressResponse'
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Add a user to the paymaster whitelist
@@ -655,21 +737,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Remove a user from the paymaster whitelist
@@ -697,15 +773,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_admin.ErrorResponse'
       summary: Admin login
       tags:
       - Auth
