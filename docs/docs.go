@@ -45,19 +45,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_server.AddressLookupResponse"
+                            "$ref": "#/definitions/server.AddressLookupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1550,7 +1550,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_server.AddressLookupResponse": {
+        "server.AddressLookupResponse": {
             "type": "object",
             "properties": {
                 "address": {
@@ -1558,7 +1558,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_server.ErrorResponse": {
+        "server.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {

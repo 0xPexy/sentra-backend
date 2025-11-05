@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"log"
 	"math/big"
@@ -193,6 +194,111 @@ func TestIndexerPersistsUserOperationEvents(t *testing.T) {
 	}
 	if cursor.LastTxHash != txHash.Hex() {
 		t.Fatalf("unexpected cursor tx: %s", cursor.LastTxHash)
+	}
+}
+
+func TestCallDecoderExtractsTargetAndSelector(t *testing.T) {
+	t.Helper()
+
+	entryPoint := common.HexToAddress("0x4337084d9e255ff0702461cf8895ce9e3b5ff108")
+	chainID := uint64(8453)
+	client := newStubEthClient(nil, 0, map[uint64]uint64{})
+
+	cfg := Config{
+		ChainID:           chainID,
+		EntryPoint:        entryPoint,
+		PollInterval:      time.Second,
+		DecodeWorkerCount: 1,
+		WriteWorkerCount:  1,
+	}
+
+	decoder := newUserOpCallDecoder(cfg, client, log.New(io.Discard, "", 0))
+	if decoder == nil {
+		t.Fatalf("expected decoder")
+	}
+
+	dest := common.HexToAddress("0x1cd8e4cc72abb54bb073fa919e60d7b9c9b3ba35")
+	callData, err := simpleAccountExecABI.Pack("execute", dest, big.NewInt(0), []byte("payload"))
+	if err != nil {
+		t.Fatalf("pack execute call: %v", err)
+	}
+
+	var accountGas [32]byte
+	var gasFees [32]byte
+	op := abiUserOperation{
+		Sender:             common.HexToAddress("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"),
+		Nonce:              big.NewInt(0),
+		InitCode:           []byte{},
+		CallData:           callData,
+		AccountGasLimits:   accountGas,
+		PreVerificationGas: big.NewInt(21000),
+		GasFees:            gasFees,
+		PaymasterAndData:   []byte{},
+		Signature:          []byte{0x1},
+	}
+
+	method := entryPointHandleABI.Methods["handleOps"]
+	type userOpInput struct {
+		Sender             common.Address `abi:"sender"`
+		Nonce              *big.Int       `abi:"nonce"`
+		InitCode           []byte         `abi:"initCode"`
+		CallData           []byte         `abi:"callData"`
+		AccountGasLimits   [32]byte       `abi:"accountGasLimits"`
+		PreVerificationGas *big.Int       `abi:"preVerificationGas"`
+		GasFees            [32]byte       `abi:"gasFees"`
+		PaymasterAndData   []byte         `abi:"paymasterAndData"`
+		Signature          []byte         `abi:"signature"`
+	}
+	ops := []userOpInput{{
+		Sender:             op.Sender,
+		Nonce:              op.Nonce,
+		InitCode:           op.InitCode,
+		CallData:           op.CallData,
+		AccountGasLimits:   op.AccountGasLimits,
+		PreVerificationGas: op.PreVerificationGas,
+		GasFees:            op.GasFees,
+		PaymasterAndData:   op.PaymasterAndData,
+		Signature:          op.Signature,
+	}}
+	inputArgs, err := method.Inputs.Pack(ops, common.Address{})
+	if err != nil {
+		t.Fatalf("pack handleOps args: %v", err)
+	}
+	input := append(method.ID, inputArgs...)
+
+	dyn := &types.DynamicFeeTx{
+		ChainID:   big.NewInt(int64(chainID)),
+		Nonce:     0,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       1_000_000,
+		To:        &entryPoint,
+		Data:      input,
+	}
+	tx := types.NewTx(dyn)
+	txHash := tx.Hash()
+	client.transactions[txHash] = tx
+
+	meta, err := decoder.decodeTransaction(context.Background(), txHash)
+	if err != nil {
+		t.Fatalf("decode transaction: %v", err)
+	}
+	if len(meta) == 0 {
+		t.Fatalf("expected metadata, got %#v", meta)
+	}
+	hash, err := decoder.computeUserOpHash(op)
+	if err != nil {
+		t.Fatalf("compute userOp hash: %v", err)
+	}
+	info, ok := meta[strings.ToLower(hash.Hex())]
+	if !ok {
+		t.Fatalf("metadata missing for hash %s", hash.Hex())
+	}
+	if info.target != strings.ToLower(dest.Hex()) {
+		t.Fatalf("unexpected target: %s", info.target)
+	}
+	if info.selector != "0x"+hex.EncodeToString(callData[:4]) {
+		t.Fatalf("unexpected selector: %s", info.selector)
 	}
 }
 

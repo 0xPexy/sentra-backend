@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,12 +42,17 @@ func NewEventHub(logger *log.Logger) *EventHub {
 }
 
 func (h *EventHub) PublishUserOperation(event *store.UserOperationEvent) {
+	target := strings.ToLower(event.Target)
+	selector := event.CallSelector
+	if selector == "-" {
+		selector = ""
+	}
 	msg := indexersvc.UserOperationItem{
 		UserOpHash:    event.UserOpHash,
 		Sender:        event.Sender,
 		Paymaster:     event.Paymaster,
-		Target:        event.Target,
-		Selector:      event.CallSelector,
+		Target:        target,
+		Selector:      selector,
 		Status:        map[bool]string{true: "success", false: "failed"}[event.Success],
 		BlockNumber:   event.BlockNumber,
 		LogIndex:      event.LogIndex,

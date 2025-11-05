@@ -111,20 +111,27 @@ func (d *decoder) decodeUserOperationEvent(ctx context.Context, lg types.Log) ([
 	if d.callDec != nil {
 		if target, selector, err := d.callDec.extract(ctx, lg.TxHash, event.UserOpHash); err != nil {
 			d.logf("call metadata decode failed: hash=%s err=%v", event.UserOpHash, err)
+			event.CallSelector = unknownSelector
 		} else {
 			if target != "" {
-				event.Target = target
+				event.Target = strings.ToLower(target)
 			}
 			if selector != "" {
-				event.CallSelector = selector
+				event.CallSelector = strings.ToLower(selector)
+			} else {
+				event.CallSelector = unknownSelector
 			}
+			d.logf("call metadata decoded: hash=%s target=%s selector=%s", event.UserOpHash, event.Target, event.CallSelector)
 		}
+	} else {
+		event.CallSelector = unknownSelector
 	}
 	d.logf("UserOp event: hash=%s tx=%s success=%t block=%d", event.UserOpHash, event.TxHash, event.Success, event.BlockNumber)
 
 	req := writeRequest{
 		name: "user_operation_event",
 		apply: func(ctx context.Context, repo Repo) error {
+			d.logf("persisting userOp event: hash=%s target=%s selector=%s", event.UserOpHash, event.Target, event.CallSelector)
 			return repo.UpsertUserOperationEvent(ctx, event)
 		},
 	}
@@ -354,23 +361,34 @@ func (d *userOpCallDecoder) extract(ctx context.Context, txHash common.Hash, use
 	if info, ok := meta[key]; ok {
 		return info.target, info.selector, nil
 	}
+	if len(meta) == 1 {
+		for k, info := range meta {
+			d.logf("call metadata: userOpHash mismatch requested=%s available=%s (using fallback)", key, k)
+			return info.target, info.selector, nil
+		}
+	}
+	d.logf("call metadata: no entry for hash=%s", key)
 	return "", "", nil
 }
 
 func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common.Hash) (map[string]callMetadata, error) {
+	d.logf("call metadata: fetching tx %s", txHash.Hex())
 	tx, _, err := d.client.TransactionByHash(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
 	if tx == nil {
+		d.logf("call metadata: tx %s not found", txHash.Hex())
 		return nil, nil
 	}
 	to := tx.To()
 	if to == nil || strings.ToLower(to.Hex()) != d.entryPointLower {
+		d.logf("call metadata: tx %s target %v mismatch entrypoint %s", txHash.Hex(), to, d.entryPointLower)
 		return nil, nil
 	}
 	data := tx.Data()
 	if len(data) < 4 {
+		d.logf("call metadata: tx %s has empty data", txHash.Hex())
 		return nil, nil
 	}
 	selector := data[:4]
@@ -379,27 +397,36 @@ func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common
 		method := d.handleABI.Methods["handleOps"]
 		values, err := method.Inputs.Unpack(data[4:])
 		if err != nil {
+			d.logf("call metadata: handleOps decode failed tx=%s err=%v", txHash.Hex(), err)
 			return nil, err
 		}
 		var input struct {
-			Ops []abiUserOperation
+			Ops         []abiUserOperation
+			Beneficiary common.Address
 		}
 		if err := method.Inputs.Copy(&input, values); err != nil {
+			d.logf("call metadata: handleOps copy failed tx=%s err=%v", txHash.Hex(), err)
 			return nil, err
 		}
+		d.logf("call metadata: handleOps unpacked %d ops", len(input.Ops))
 		return d.buildMetadata(input.Ops)
 	case d.handleOpID != nil && bytes.Equal(selector, d.handleOpID):
 		method := d.handleABI.Methods["handleOp"]
 		values, err := method.Inputs.Unpack(data[4:])
 		if err != nil {
+			d.logf("call metadata: handleOp decode failed tx=%s err=%v", txHash.Hex(), err)
 			return nil, err
 		}
 		var input struct {
-			Op abiUserOperation
+			Op          abiUserOperation
+			Beneficiary common.Address
+			Aggregator  common.Address
 		}
 		if err := method.Inputs.Copy(&input, values); err != nil {
+			d.logf("call metadata: handleOp copy failed tx=%s err=%v", txHash.Hex(), err)
 			return nil, err
 		}
+		d.logf("call metadata: handleOp unpacked 1 op")
 		return d.buildMetadata([]abiUserOperation{input.Op})
 	default:
 		return nil, nil
@@ -417,6 +444,7 @@ func (d *userOpCallDecoder) buildMetadata(ops []abiUserOperation) (map[string]ca
 			continue
 		}
 		target, selector := d.decodeCallData(op.CallData)
+		d.logf("call metadata: op hash=%s selector=%s target=%s callDataLen=%d", strings.ToLower(hash.Hex()), selector, target, len(op.CallData))
 		out[strings.ToLower(hash.Hex())] = callMetadata{
 			target:   target,
 			selector: selector,
@@ -427,9 +455,11 @@ func (d *userOpCallDecoder) buildMetadata(ops []abiUserOperation) (map[string]ca
 
 func (d *userOpCallDecoder) decodeCallData(callData []byte) (string, string) {
 	if len(callData) < 4 {
+		d.logf("call metadata: callData too short len=%d", len(callData))
 		return "", ""
 	}
-	selector := "0x" + strings.ToLower(hex.EncodeToString(callData[:4]))
+	selectorBytes := callData[:4]
+	selector := "0x" + strings.ToLower(hex.EncodeToString(selectorBytes))
 	target := ""
 	if bytes.Equal(callData[:4], d.simpleExecID) {
 		method := d.simpleExecABI.Methods["execute"]
@@ -444,6 +474,10 @@ func (d *userOpCallDecoder) decodeCallData(callData []byte) (string, string) {
 				target = strings.ToLower(input.Dest.Hex())
 			}
 		}
+		d.logf("call metadata: simple execute selector=%s target=%s", selector, target)
+	} else {
+		preview := hex.EncodeToString(callData[:min(32, len(callData))])
+		d.logf("call metadata: unsupported selector=%s len=%d preview=%s", selector, len(callData), preview)
 	}
 	return target, selector
 }
@@ -523,6 +557,8 @@ func mustParseABI(jsonStr string) abi.ABI {
 	return parsed
 }
 
+const unknownSelector = "-"
+
 var (
 	entryPointEventsABI = mustParseABI(`[
 		{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"userOpHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"address","name":"paymaster","type":"address"},{"indexed":false,"internalType":"uint256","name":"nonce","type":"uint256"},{"indexed":false,"internalType":"bool","name":"success","type":"bool"},{"indexed":false,"internalType":"uint256","name":"actualGasCost","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"actualGasUsed","type":"uint256"}],"name":"UserOperationEvent","type":"event"},
@@ -558,3 +594,16 @@ var (
 	userOpHashArgs = mustArguments("bytes32", "address", "uint256", "bytes32", "bytes32", "uint256", "uint256", "uint256", "bytes32", "bytes32")
 	domainHashArgs = mustArguments("bytes32", "uint256", "address")
 )
+
+func (d *userOpCallDecoder) logf(format string, args ...any) {
+	if d.logger != nil {
+		d.logger.Printf(format, args...)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

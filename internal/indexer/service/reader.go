@@ -22,6 +22,33 @@ func NewReader(repo *store.Repository) *Reader {
 	return &Reader{repo: repo}
 }
 
+const selectorSentinel = "-"
+
+func sanitizeSelector(sel string) string {
+	if sel == "" || sel == selectorSentinel {
+		return ""
+	}
+	return strings.ToLower(sel)
+}
+
+func weiToGweiString(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "0"
+	}
+	wei, ok := new(big.Int).SetString(raw, 10)
+	if !ok || wei.Sign() == 0 {
+		return "0"
+	}
+	f := new(big.Float).SetInt(wei)
+	gwei := new(big.Float).Quo(f, big.NewFloat(1e9))
+	text := strings.TrimRight(strings.TrimRight(gwei.Text('f', 9), "0"), ".")
+	if text == "" {
+		return "0"
+	}
+	return text
+}
+
 type Status struct {
 	ChainID     uint64 `json:"chainId"`
 	CurrentHead uint64 `json:"currentHead"`
@@ -139,8 +166,8 @@ func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParam
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
-			Target:        row.Target,
-			Selector:      row.CallSelector,
+			Target:        strings.ToLower(row.Target),
+			Selector:      sanitizeSelector(row.CallSelector),
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -245,8 +272,8 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		UserOpHash:    row.UserOpHash,
 		Sender:        row.Sender,
 		Paymaster:     row.Paymaster,
-		Target:        row.Target,
-		Selector:      row.CallSelector,
+		Target:        strings.ToLower(row.Target),
+		Selector:      sanitizeSelector(row.CallSelector),
 		Status:        status,
 		BlockNumber:   row.BlockNumber,
 		LogIndex:      row.LogIndex,
@@ -263,6 +290,16 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 			Selector: selector,
 			Message:  message,
 			Raw:      row.RevertReason,
+		}
+		if message != "" {
+			item.RevertReason = message
+		}
+	}
+	if revertInfo == nil && item.Status == "failed" {
+		item.RevertReason = "Execution reverted with empty data or OOG"
+		revertInfo = &RevertInfo{
+			Message: item.RevertReason,
+			Raw:     "",
 		}
 	}
 	var sponsorship *SponsorshipInfo
@@ -327,8 +364,8 @@ func (r *Reader) ListPaymasterOperations(ctx context.Context, params PaymasterOp
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
-			Target:        row.Target,
-			Selector:      row.CallSelector,
+			Target:        strings.ToLower(row.Target),
+			Selector:      sanitizeSelector(row.CallSelector),
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -426,11 +463,11 @@ func (r *Reader) SponsoredOps(ctx context.Context, params SponsoredOpsParams) (*
 		if row.Success {
 			status = "success"
 		}
-		selector := row.CallSelector
+		selector := sanitizeSelector(row.CallSelector)
 		if selector == "" && len(row.OpSelector) > 0 {
 			selector = "0x" + hex.EncodeToString(row.OpSelector)
 		}
-		target := row.Target
+		target := strings.ToLower(row.Target)
 		if row.OpTarget != nil && *row.OpTarget != "" {
 			target = strings.ToLower(*row.OpTarget)
 		}
@@ -526,8 +563,8 @@ func (r *Reader) SenderReport(ctx context.Context, params store.SenderOpsParams)
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
-			Target:        row.Target,
-			Selector:      row.CallSelector,
+			Target:        strings.ToLower(row.Target),
+			Selector:      sanitizeSelector(row.CallSelector),
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,
@@ -556,6 +593,8 @@ func (r *Reader) ContractReport(ctx context.Context, params store.ContractOpsPar
 			UserOpHash:    row.UserOpHash,
 			Sender:        row.Sender,
 			Paymaster:     row.Paymaster,
+			Target:        strings.ToLower(row.Target),
+			Selector:      sanitizeSelector(row.CallSelector),
 			Status:        status,
 			BlockNumber:   row.BlockNumber,
 			LogIndex:      row.LogIndex,

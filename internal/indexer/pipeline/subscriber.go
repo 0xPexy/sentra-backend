@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/0xPexy/sentra-backend/internal/store"
@@ -113,6 +114,11 @@ func (s *logSubscriber) stream(ctx context.Context, out chan<- types.Log) error 
 				ToBlock:   new(big.Int).SetUint64(to),
 				Topics:    [][]common.Hash{s.topics},
 			}
+			topicStrs := make([]string, len(s.topics))
+			for i, t := range s.topics {
+				topicStrs[i] = t.Hex()
+			}
+			s.logf("eth_getLogs request: from=%d to=%d topics=%d [%s]", from, to, len(s.topics), strings.Join(topicStrs, ","))
 
 			logs, err := s.client.FilterLogs(ctx, query)
 			if err != nil {
@@ -138,7 +144,7 @@ func (s *logSubscriber) stream(ctx context.Context, out chan<- types.Log) error 
 				}
 				filtered = append(filtered, lg)
 			}
-			s.logf("Fetched logs: from=%d to=%d total=%d matched=%d", from, to, len(logs), len(filtered))
+			s.logf("eth_getLogs response: from=%d to=%d total=%d matched=%d", from, to, len(logs), len(filtered))
 
 			for _, lg := range filtered {
 				select {

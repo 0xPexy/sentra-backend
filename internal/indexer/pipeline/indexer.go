@@ -2,9 +2,12 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strings"
 	"sync"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/errgroup"
@@ -37,7 +40,9 @@ func New(cfg Config, repo Repo, client EthClient, logger *log.Logger) *Indexer {
 
 func (i *Indexer) Run(ctx context.Context) error {
 	i.logf("Indexer starting: chain=%d entryPoint=%s", i.cfg.ChainID, i.cfg.EntryPoint.Hex())
-	// Temporarily disabled call metadata backfill; re-enable once decoder handles all EntryPoint variants.
+	if err := i.backfillCallMetadata(ctx); err != nil {
+		i.logf("call metadata backfill failed: %v", err)
+	}
 	g, ctx := errgroup.WithContext(ctx)
 
 	decodeCh := make(chan types.Log, i.cfg.decodeWorkerCount()*32)
@@ -140,26 +145,45 @@ func (i *Indexer) backfillCallMetadata(ctx context.Context) error {
 		if len(events) == 0 {
 			return nil
 		}
+		mapping := make(map[string]struct{})
+		for _, ev := range events {
+			mapping[strings.ToLower(ev.UserOpHash)] = struct{}{}
+		}
 		for _, ev := range events {
 			txHash := common.HexToHash(ev.TxHash)
 			target, selector, err := i.decoder.callDec.extract(ctx, txHash, ev.UserOpHash)
 			if err != nil {
-				i.logf("backfill metadata failed: hash=%s err=%v", ev.UserOpHash, err)
-				continue
-			}
-			if target == "" && selector == "" {
+				updated := ev
+				updated.CallSelector = unknownSelector
+				if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
+					i.logf("backfill persist failed: hash=%s err=%v", updated.UserOpHash, err)
+				}
+				if errors.Is(err, ethereum.NotFound) {
+					i.logf("backfill metadata skipped (tx missing): hash=%s tx=%s", ev.UserOpHash, ev.TxHash)
+				} else {
+					i.logf("backfill metadata failed: hash=%s err=%v", ev.UserOpHash, err)
+				}
 				continue
 			}
 			updated := ev
 			if target != "" {
-				updated.Target = target
+				updated.Target = strings.ToLower(target)
 			}
 			if selector != "" {
-				updated.CallSelector = selector
+				updated.CallSelector = strings.ToLower(selector)
+			} else {
+				updated.CallSelector = unknownSelector
 			}
+			i.logf("backfill storing userOp: hash=%s target=%s selector=%s", updated.UserOpHash, updated.Target, updated.CallSelector)
 			if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
 				i.logf("backfill persist failed: hash=%s err=%v", updated.UserOpHash, err)
 			}
+			if selector != "" {
+				delete(mapping, strings.ToLower(updated.UserOpHash))
+			}
+		}
+		if len(mapping) > 0 {
+			i.logf("backfill warning: missing hashes after extract: %v", mapping)
 		}
 	}
 }

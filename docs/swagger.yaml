@@ -334,12 +334,12 @@ definitions:
       message:
         type: string
     type: object
-  internal_server.AddressLookupResponse:
+  server.AddressLookupResponse:
     properties:
       address:
         type: string
     type: object
-  internal_server.ErrorResponse:
+  server.ErrorResponse:
     properties:
       error:
         type: string
@@ -372,15 +372,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_server.AddressLookupResponse'
+            $ref: '#/definitions/server.AddressLookupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       summary: Lookup configured contract address
       tags:
       - Addresses
