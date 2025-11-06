@@ -248,26 +248,67 @@ func (r *Repository) UpsertUserOperationEvent(ctx context.Context, event *UserOp
 	event.Sender = strings.ToLower(event.Sender)
 	event.Paymaster = strings.ToLower(event.Paymaster)
 	event.Target = strings.ToLower(event.Target)
+	event.Beneficiary = strings.ToLower(event.Beneficiary)
 	event.CallSelector = strings.ToLower(event.CallSelector)
 	event.TxHash = strings.ToLower(event.TxHash)
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_op_hash"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"sender":          event.Sender,
-			"paymaster":       event.Paymaster,
-			"target":          event.Target,
-			"call_selector":   event.CallSelector,
-			"nonce":           event.Nonce,
-			"success":         event.Success,
-			"actual_gas_cost": event.ActualGasCost,
-			"actual_gas_used": event.ActualGasUsed,
-			"tx_hash":         event.TxHash,
-			"block_number":    event.BlockNumber,
-			"log_index":       event.LogIndex,
-			"block_time":      event.BlockTime,
-			"updated_at":      gorm.Expr("CURRENT_TIMESTAMP"),
+			"sender":                           event.Sender,
+			"paymaster":                        event.Paymaster,
+			"target":                           event.Target,
+			"call_selector":                    event.CallSelector,
+			"nonce":                            event.Nonce,
+			"success":                          event.Success,
+			"actual_gas_cost":                  event.ActualGasCost,
+			"actual_gas_used":                  event.ActualGasUsed,
+			"beneficiary":                      event.Beneficiary,
+			"call_gas_limit":                   event.CallGasLimit,
+			"verification_gas_limit":           event.VerificationGasLimit,
+			"pre_verification_gas":             event.PreVerificationGas,
+			"max_fee_per_gas":                  event.MaxFeePerGas,
+			"max_priority_fee_per_gas":         event.MaxPriorityFeePerGas,
+			"paymaster_verification_gas_limit": event.PaymasterVerificationGasLimit,
+			"paymaster_post_op_gas_limit":      event.PaymasterPostOpGasLimit,
+			"tx_hash":                          event.TxHash,
+			"block_number":                     event.BlockNumber,
+			"log_index":                        event.LogIndex,
+			"block_time":                       event.BlockTime,
+			"updated_at":                       gorm.Expr("CURRENT_TIMESTAMP"),
 		}),
 	}).Create(event).Error
+}
+
+func (r *Repository) UpsertUserOperationTrace(ctx context.Context, trace *UserOperationTrace) error {
+	trace.UserOpHash = strings.ToLower(trace.UserOpHash)
+	trace.TxHash = strings.ToLower(trace.TxHash)
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_op_hash"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"chain_id":      trace.ChainID,
+			"tx_hash":       trace.TxHash,
+			"trace_summary": trace.TraceSummary,
+			"updated_at":    gorm.Expr("CURRENT_TIMESTAMP"),
+		}),
+	}).Create(trace).Error
+}
+
+func (r *Repository) GetUserOperationTrace(ctx context.Context, chainID uint64, userOpHash string) (*UserOperationTrace, error) {
+	hash := strings.TrimSpace(strings.ToLower(userOpHash))
+	if hash != "" && !strings.HasPrefix(hash, "0x") {
+		hash = "0x" + hash
+	}
+	var trace UserOperationTrace
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND user_op_hash = ?", chainID, hash).
+		First(&trace).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &trace, nil
 }
 
 func (r *Repository) UpsertUserOperationRevert(ctx context.Context, revert *UserOperationRevert) error {

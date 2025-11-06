@@ -80,24 +80,42 @@ type LogCursor struct {
 }
 
 type UserOperationEvent struct {
-	ID            uint   `gorm:"primaryKey"`
-	ChainID       uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
-	EntryPoint    string `gorm:"size:66;index"`
-	UserOpHash    string `gorm:"size:66;uniqueIndex"`
-	Sender        string `gorm:"size:66;index"`
-	Paymaster     string `gorm:"size:66"`
-	Target        string `gorm:"size:66"`
-	Nonce         string `gorm:"size:78"`
-	Success       bool   `gorm:"index"`
-	ActualGasCost string `gorm:"size:78"`
-	ActualGasUsed string `gorm:"size:78"`
-	TxHash        string `gorm:"size:66;uniqueIndex:idx_userop_txlog"`
-	BlockNumber   uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
-	LogIndex      uint   `gorm:"uniqueIndex:idx_userop_txlog"`
-	CallSelector  string `gorm:"size:10"`
-	BlockTime     time.Time
-	CreatedAt     time.Time `gorm:"autoCreateTime"`
-	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
+	ID                            uint   `gorm:"primaryKey"`
+	ChainID                       uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
+	EntryPoint                    string `gorm:"size:66;index"`
+	UserOpHash                    string `gorm:"size:66;uniqueIndex"`
+	Sender                        string `gorm:"size:66;index"`
+	Paymaster                     string `gorm:"size:66"`
+	Target                        string `gorm:"size:66"`
+	Nonce                         string `gorm:"size:78"`
+	Success                       bool   `gorm:"index"`
+	ActualGasCost                 string `gorm:"size:78"`
+	ActualGasUsed                 string `gorm:"size:78"`
+	Beneficiary                   string `gorm:"size:66"`
+	CallGasLimit                  string `gorm:"size:78"`
+	VerificationGasLimit          string `gorm:"size:78"`
+	PreVerificationGas            string `gorm:"size:78"`
+	MaxFeePerGas                  string `gorm:"size:78"`
+	MaxPriorityFeePerGas          string `gorm:"size:78"`
+	PaymasterVerificationGasLimit string `gorm:"size:78"`
+	PaymasterPostOpGasLimit       string `gorm:"size:78"`
+	TxHash                        string `gorm:"size:66;uniqueIndex:idx_userop_txlog"`
+	BlockNumber                   uint64 `gorm:"uniqueIndex:idx_userop_txlog"`
+	LogIndex                      uint   `gorm:"uniqueIndex:idx_userop_txlog"`
+	CallSelector                  string `gorm:"size:10"`
+	BlockTime                     time.Time
+	CreatedAt                     time.Time `gorm:"autoCreateTime"`
+	UpdatedAt                     time.Time `gorm:"autoUpdateTime"`
+}
+
+type UserOperationTrace struct {
+	ID           uint      `gorm:"primaryKey"`
+	ChainID      uint64    `gorm:"index"`
+	UserOpHash   string    `gorm:"size:66;uniqueIndex"`
+	TxHash       string    `gorm:"size:66"`
+	TraceSummary string    `gorm:"type:text"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
 
 type UserOperationRevert struct {

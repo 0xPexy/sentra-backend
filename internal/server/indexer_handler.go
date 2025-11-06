@@ -158,6 +158,49 @@ func (h *indexerHandler) UserOperationDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+// UserOperationGas godoc
+// @Summary Get user operation gas breakdown
+// @Tags Operations
+// @Security BearerAuth
+// @Produce json
+// @Param userOpHash path string true "User operation hash"
+// @Param chain_id query uint64 false "Chain ID override"
+// @Success 200 {object} indexersvc.UserOperationGas
+// @Failure 400 {object} admin.ErrorResponse
+// @Failure 404 {object} admin.ErrorResponse
+// @Failure 500 {object} admin.ErrorResponse
+// @Router /api/v1/ops/{userOpHash}/gas [get]
+func (h *indexerHandler) UserOperationGas(c *gin.Context) {
+	hash := strings.ToLower(strings.TrimSpace(c.Param("userOpHash")))
+	if hash == "" {
+		writeAPIError(c, http.StatusBadRequest, "userOpHash is required")
+		return
+	}
+	chainID := h.cfg.Chain.ChainID
+	if raw := strings.TrimSpace(c.Query("chain_id")); raw != "" {
+		val, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			writeAPIError(c, http.StatusBadRequest, "invalid chain_id")
+			return
+		}
+		chainID = val
+	}
+	if chainID == 0 {
+		writeAPIError(c, http.StatusBadRequest, "chain id required")
+		return
+	}
+	gas, err := h.reader.GetUserOperationGas(c.Request.Context(), chainID, hash)
+	if err != nil {
+		writeAPIError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if gas == nil {
+		writeAPIError(c, http.StatusNotFound, "user operation not found")
+		return
+	}
+	c.JSON(http.StatusOK, gas)
+}
+
 // StreamEvents godoc
 // @Summary Stream user operation events
 // @Tags Events

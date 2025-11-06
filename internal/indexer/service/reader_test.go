@@ -172,3 +172,75 @@ func TestReaderQueries(t *testing.T) {
 		t.Fatalf("expected contract 2 items")
 	}
 }
+
+func TestReaderGetUserOperationGas(t *testing.T) {
+	ctx := context.Background()
+	gormDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db := &store.DB{DB: gormDB}
+	store.AutoMigrate(db)
+
+	repo := store.NewRepository(db)
+	reader := NewReader(repo)
+
+	chainID := uint64(8453)
+	userOpHash := "0xaaa"
+	txHash := "0xtx1"
+
+	event := store.UserOperationEvent{
+		ChainID:                       chainID,
+		EntryPoint:                    "0xentrypoint",
+		UserOpHash:                    userOpHash,
+		Sender:                        "0xsender1",
+		Paymaster:                     "0xpaymaster1",
+		Target:                        "0xtarget1",
+		Nonce:                         "1",
+		Success:                       true,
+		ActualGasCost:                 "1000",
+		ActualGasUsed:                 "500",
+		Beneficiary:                   "0xbeneficiary",
+		CallGasLimit:                  "10000",
+		VerificationGasLimit:          "20000",
+		PreVerificationGas:            "3000",
+		MaxFeePerGas:                  "40",
+		MaxPriorityFeePerGas:          "2",
+		PaymasterVerificationGasLimit: "4000",
+		PaymasterPostOpGasLimit:       "5000",
+		TxHash:                        txHash,
+		BlockNumber:                   100,
+		LogIndex:                      0,
+		BlockTime:                     time.Now().UTC(),
+	}
+	if err := repo.UpsertUserOperationEvent(ctx, &event); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+
+	trace := store.UserOperationTrace{
+		ChainID:      chainID,
+		UserOpHash:   userOpHash,
+		TxHash:       txHash,
+		TraceSummary: `[{"phase":"validation","gasUsed":"800","gasLimit":"2000"},{"phase":"execution","gasUsed":"4500","gasLimit":"10000"}]`,
+	}
+	if err := repo.UpsertUserOperationTrace(ctx, &trace); err != nil {
+		t.Fatalf("seed trace: %v", err)
+	}
+
+	resp, err := reader.GetUserOperationGas(ctx, chainID, userOpHash)
+	if err != nil {
+		t.Fatalf("GetUserOperationGas err: %v", err)
+	}
+	if resp == nil {
+		t.Fatalf("expected response")
+	}
+	if len(resp.Phases) != 2 {
+		t.Fatalf("expected 2 phase entries, got %d", len(resp.Phases))
+	}
+	if resp.Phases[0].Phase != "validation" {
+		t.Fatalf("unexpected first phase: %s", resp.Phases[0].Phase)
+	}
+	if resp.CallGasLimit != "10000" || resp.ActualGasUsed != "500" {
+		t.Fatalf("unexpected limits or usage")
+	}
+}

@@ -48,18 +48,26 @@ func (h *EventHub) PublishUserOperation(event *store.UserOperationEvent) {
 		selector = ""
 	}
 	msg := indexersvc.UserOperationItem{
-		UserOpHash:    event.UserOpHash,
-		Sender:        event.Sender,
-		Paymaster:     event.Paymaster,
-		Target:        target,
-		Selector:      selector,
-		Status:        map[bool]string{true: "success", false: "failed"}[event.Success],
-		BlockNumber:   event.BlockNumber,
-		LogIndex:      event.LogIndex,
-		TxHash:        event.TxHash,
-		ActualGasUsed: event.ActualGasUsed,
-		ActualGasCost: event.ActualGasCost,
-		BlockTime:     event.BlockTime,
+		UserOpHash:                    event.UserOpHash,
+		Sender:                        event.Sender,
+		Paymaster:                     event.Paymaster,
+		Target:                        target,
+		Selector:                      selector,
+		Status:                        map[bool]string{true: "success", false: "failed"}[event.Success],
+		BlockNumber:                   event.BlockNumber,
+		LogIndex:                      event.LogIndex,
+		TxHash:                        event.TxHash,
+		ActualGasUsed:                 event.ActualGasUsed,
+		ActualGasCost:                 event.ActualGasCost,
+		Beneficiary:                   event.Beneficiary,
+		CallGasLimit:                  event.CallGasLimit,
+		VerificationGasLimit:          event.VerificationGasLimit,
+		PreVerificationGas:            event.PreVerificationGas,
+		MaxFeePerGas:                  event.MaxFeePerGas,
+		MaxPriorityFeePerGas:          event.MaxPriorityFeePerGas,
+		PaymasterVerificationGasLimit: event.PaymasterVerificationGasLimit,
+		PaymasterPostOpGasLimit:       event.PaymasterPostOpGasLimit,
+		BlockTime:                     event.BlockTime,
 	}
 	payload, err := json.Marshal(msg)
 	if err != nil {

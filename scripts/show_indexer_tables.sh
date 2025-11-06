@@ -112,5 +112,8 @@ run_query "simple_account_initializations" \
 run_query "sponsorships" \
 	"SELECT * FROM sponsorships ORDER BY block_number DESC, log_index DESC"
 
+run_query "user_operation_traces" \
+	"SELECT * FROM user_operation_traces ORDER BY id DESC"
+
 run_query "log_cursors" \
 	"SELECT * FROM log_cursors ORDER BY chain_id, address"

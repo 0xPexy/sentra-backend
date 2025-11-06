@@ -5,6 +5,23 @@ definitions:
       error:
         type: string
     type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown:
+    properties:
+      from:
+        type: string
+      gas:
+        type: string
+      gasUsed:
+        type: string
+      method:
+        type: string
+      stage:
+        type: string
+      to:
+        type: string
+      type:
+        type: string
+    type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.PaymasterOverview:
     properties:
       avgActualGasUsed:
@@ -15,6 +32,15 @@ definitions:
         type: string
       totalSponsoredOps:
         type: integer
+    type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.PhaseGas:
+    properties:
+      gasLimit:
+        type: string
+      gasUsed:
+        type: string
+      phase:
+        type: string
     type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.RevertInfo:
     properties:
@@ -75,19 +101,37 @@ definitions:
         type: string
       actualGasUsed:
         type: string
+      beneficiary:
+        type: string
       blockNumber:
         type: integer
       blockTime:
+        type: string
+      callGasLimit:
         type: string
       events:
         items:
           $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOpEventInfo'
         type: array
+      gasBreakdown:
+        items:
+          $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown'
+        type: array
       logIndex:
         type: integer
+      maxFeePerGas:
+        type: string
+      maxPriorityFeePerGas:
+        type: string
       nonce:
         type: string
       paymaster:
+        type: string
+      paymasterPostOpGasLimit:
+        type: string
+      paymasterVerificationGasLimit:
+        type: string
+      preVerificationGas:
         type: string
       revert:
         $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.RevertInfo'
@@ -106,6 +150,37 @@ definitions:
       txHash:
         type: string
       userOpHash:
+        type: string
+      verificationGasLimit:
+        type: string
+    type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationGas:
+    properties:
+      actualGasCost:
+        type: string
+      actualGasUsed:
+        type: string
+      callGasLimit:
+        type: string
+      maxFeePerGas:
+        type: string
+      maxPriorityFeePerGas:
+        type: string
+      paymasterPostOpGasLimit:
+        type: string
+      paymasterVerificationGasLimit:
+        type: string
+      phases:
+        items:
+          $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.PhaseGas'
+        type: array
+      preVerificationGas:
+        type: string
+      txHash:
+        type: string
+      userOpHash:
+        type: string
+      verificationGasLimit:
         type: string
     type: object
   internal_admin.AddContractRequest:
@@ -334,12 +409,12 @@ definitions:
       message:
         type: string
     type: object
-  server.AddressLookupResponse:
+  internal_server.AddressLookupResponse:
     properties:
       address:
         type: string
     type: object
-  server.ErrorResponse:
+  internal_server.ErrorResponse:
     properties:
       error:
         type: string
@@ -372,15 +447,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.AddressLookupResponse'
+            $ref: '#/definitions/internal_server.AddressLookupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/internal_server.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/internal_server.ErrorResponse'
       summary: Lookup configured contract address
       tags:
       - Addresses
@@ -503,6 +578,43 @@ paths:
       security:
       - BearerAuth: []
       summary: Get user operation detail
+      tags:
+      - Operations
+  /api/v1/ops/{userOpHash}/gas:
+    get:
+      parameters:
+      - description: User operation hash
+        in: path
+        name: userOpHash
+        required: true
+        type: string
+      - description: Chain ID override
+        format: int64
+        in: query
+        name: chain_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationGas'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user operation gas breakdown
       tags:
       - Operations
   /api/v1/paymasters:

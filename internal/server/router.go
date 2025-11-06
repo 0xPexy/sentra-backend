@@ -41,6 +41,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 		ad.GET("/me", adminH.Me)
 		ad.GET("/stats/overview", idxH.StatsOverview)
 		ad.GET("/paymasters/:address/ops", idxH.SponsoredOps)
+		ad.GET("/ops/:userOpHash/gas", idxH.UserOperationGas)
 		ad.GET("/ops/:userOpHash", idxH.UserOperationDetail)
 
 		ad.POST("/paymasters", adminH.CreatePaymaster)

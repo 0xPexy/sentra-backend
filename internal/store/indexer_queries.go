@@ -39,6 +39,7 @@ type UserOpDetailRow struct {
 	RevertReason string
 	ValidUntil   string
 	ValidAfter   string
+	TraceSummary string
 }
 
 type RangeQuery struct {
@@ -137,6 +138,23 @@ func (r *Repository) ListUserOpsMissingCallData(ctx context.Context, chainID uin
 	return rows, nil
 }
 
+func (r *Repository) ListUserOpsMissingTrace(ctx context.Context, chainID uint64, limit int) ([]UserOperationEvent, error) {
+	query := r.db.WithContext(ctx).
+		Table("user_operation_events AS e").
+		Select("e.*").
+		Joins("LEFT JOIN user_operation_traces AS t ON t.user_op_hash = e.user_op_hash AND t.chain_id = e.chain_id").
+		Where("e.chain_id = ? AND t.user_op_hash IS NULL", chainID).
+		Order("e.block_number ASC, e.log_index ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var rows []UserOperationEvent
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *Repository) GetIndexerStatus(ctx context.Context, chainID uint64) (*IndexerStatusRow, error) {
 	var cursor LogCursor
 	err := r.db.WithContext(ctx).
@@ -214,9 +232,10 @@ func (r *Repository) GetUserOperationDetail(ctx context.Context, chainID uint64,
 	var row UserOpDetailRow
 	err := r.db.WithContext(ctx).
 		Table("user_operation_events AS e").
-		Select("e.*, r.revert_reason, s.valid_until, s.valid_after").
+		Select("e.*, r.revert_reason, s.valid_until, s.valid_after, t.trace_summary").
 		Joins("LEFT JOIN user_operation_reverts AS r ON r.user_op_hash = e.user_op_hash AND r.chain_id = e.chain_id").
 		Joins("LEFT JOIN sponsorships AS s ON s.user_op_hash = e.user_op_hash AND s.chain_id = e.chain_id").
+		Joins("LEFT JOIN user_operation_traces AS t ON t.user_op_hash = e.user_op_hash AND t.chain_id = e.chain_id").
 		Where("e.chain_id = ? AND e.user_op_hash = ?", chainID, hash).
 		First(&row).Error
 	if err != nil {

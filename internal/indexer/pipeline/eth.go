@@ -15,6 +15,7 @@ type EthClient interface {
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error)
+	TraceTransaction(ctx context.Context, hash common.Hash) (*TraceResult, error)
 }
 
 type blockTimeCache struct {

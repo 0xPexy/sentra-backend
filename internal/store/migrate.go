@@ -12,6 +12,7 @@ func AutoMigrate(db *DB) {
 		&Operation{},
 		&LogCursor{},
 		&UserOperationEvent{},
+		&UserOperationTrace{},
 		&UserOperationRevert{},
 		&AccountDeployment{},
 		&SimpleAccountInitialization{},

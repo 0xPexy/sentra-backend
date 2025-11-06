@@ -10,11 +10,13 @@ type Repo interface {
 	GetLogCursor(ctx context.Context, chainID uint64, address string) (*store.LogCursor, error)
 	UpsertLogCursor(ctx context.Context, cursor *store.LogCursor) error
 	UpsertUserOperationEvent(ctx context.Context, event *store.UserOperationEvent) error
+	UpsertUserOperationTrace(ctx context.Context, trace *store.UserOperationTrace) error
 	UpsertUserOperationRevert(ctx context.Context, revert *store.UserOperationRevert) error
 	UpsertAccountDeployment(ctx context.Context, dep *store.AccountDeployment) error
 	UpsertSimpleAccountInitialization(ctx context.Context, init *store.SimpleAccountInitialization) error
 	UpsertSponsorship(ctx context.Context, s *store.Sponsorship) error
 	ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error)
+	ListUserOpsMissingTrace(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error)
 }
 
 type StoreAdapter struct {
@@ -49,6 +51,10 @@ func (a *StoreAdapter) UpsertUserOperationEvent(ctx context.Context, event *stor
 	return nil
 }
 
+func (a *StoreAdapter) UpsertUserOperationTrace(ctx context.Context, trace *store.UserOperationTrace) error {
+	return a.repo.UpsertUserOperationTrace(ctx, trace)
+}
+
 func (a *StoreAdapter) UpsertUserOperationRevert(ctx context.Context, revert *store.UserOperationRevert) error {
 	return a.repo.UpsertUserOperationRevert(ctx, revert)
 }
@@ -67,4 +73,8 @@ func (a *StoreAdapter) UpsertSponsorship(ctx context.Context, s *store.Sponsorsh
 
 func (a *StoreAdapter) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {
 	return a.repo.ListUserOpsMissingCallData(ctx, chainID, limit)
+}
+
+func (a *StoreAdapter) ListUserOpsMissingTrace(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {
+	return a.repo.ListUserOpsMissingTrace(ctx, chainID, limit)
 }

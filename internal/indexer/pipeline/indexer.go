@@ -2,11 +2,14 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/0xPexy/sentra-backend/internal/store"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -21,6 +24,8 @@ type Indexer struct {
 	decoder    *decoder
 	subscriber *logSubscriber
 }
+
+var errTraceUnsupported = errors.New("trace unsupported")
 
 func New(cfg Config, repo Repo, client EthClient, logger *log.Logger) *Indexer {
 	if logger == nil {
@@ -44,6 +49,10 @@ func (i *Indexer) Run(ctx context.Context) error {
 		i.logf("call metadata backfill failed: %v", err)
 	}
 	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		return i.runTraceBackfill(ctx)
+	})
 
 	decodeCh := make(chan types.Log, i.cfg.decodeWorkerCount()*32)
 	writeCh := make(chan writeRequest, i.cfg.writeWorkerCount()*16)
@@ -151,10 +160,17 @@ func (i *Indexer) backfillCallMetadata(ctx context.Context) error {
 		}
 		for _, ev := range events {
 			txHash := common.HexToHash(ev.TxHash)
-			target, selector, err := i.decoder.callDec.extract(ctx, txHash, ev.UserOpHash)
+			meta, err := i.decoder.callDec.extract(ctx, txHash, ev.UserOpHash)
 			if err != nil {
 				updated := ev
 				updated.CallSelector = unknownSelector
+				updated.CallGasLimit = "0"
+				updated.VerificationGasLimit = "0"
+				updated.PreVerificationGas = "0"
+				updated.MaxFeePerGas = "0"
+				updated.MaxPriorityFeePerGas = "0"
+				updated.PaymasterVerificationGasLimit = "0"
+				updated.PaymasterPostOpGasLimit = "0"
 				if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
 					i.logf("backfill persist failed: hash=%s err=%v", updated.UserOpHash, err)
 				}
@@ -166,19 +182,40 @@ func (i *Indexer) backfillCallMetadata(ctx context.Context) error {
 				continue
 			}
 			updated := ev
-			if target != "" {
-				updated.Target = strings.ToLower(target)
-			}
-			if selector != "" {
-				updated.CallSelector = strings.ToLower(selector)
+			if meta != nil {
+				if meta.target != "" {
+					updated.Target = strings.ToLower(meta.target)
+				}
+				if meta.selector != "" {
+					updated.CallSelector = strings.ToLower(meta.selector)
+				} else {
+					updated.CallSelector = unknownSelector
+				}
+				if meta.beneficiary != "" {
+					updated.Beneficiary = meta.beneficiary
+				}
+				updated.CallGasLimit = bigString(meta.callGasLimit)
+				updated.VerificationGasLimit = bigString(meta.verificationGasLimit)
+				updated.PreVerificationGas = bigString(meta.preVerificationGas)
+				updated.MaxFeePerGas = bigString(meta.maxFeePerGas)
+				updated.MaxPriorityFeePerGas = bigString(meta.maxPriorityFeePerGas)
+				updated.PaymasterVerificationGasLimit = bigString(meta.paymasterVerificationLimit)
+				updated.PaymasterPostOpGasLimit = bigString(meta.paymasterPostOpLimit)
 			} else {
 				updated.CallSelector = unknownSelector
+				updated.CallGasLimit = "0"
+				updated.VerificationGasLimit = "0"
+				updated.PreVerificationGas = "0"
+				updated.MaxFeePerGas = "0"
+				updated.MaxPriorityFeePerGas = "0"
+				updated.PaymasterVerificationGasLimit = "0"
+				updated.PaymasterPostOpGasLimit = "0"
 			}
 			i.logf("backfill storing userOp: hash=%s target=%s selector=%s", updated.UserOpHash, updated.Target, updated.CallSelector)
 			if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
 				i.logf("backfill persist failed: hash=%s err=%v", updated.UserOpHash, err)
 			}
-			if selector != "" {
+			if meta != nil && meta.selector != "" {
 				delete(mapping, strings.ToLower(updated.UserOpHash))
 			}
 		}
@@ -186,6 +223,125 @@ func (i *Indexer) backfillCallMetadata(ctx context.Context) error {
 			i.logf("backfill warning: missing hashes after extract: %v", mapping)
 		}
 	}
+}
+
+func (i *Indexer) runTraceBackfill(ctx context.Context) error {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		events, err := i.repo.ListUserOpsMissingTrace(ctx, i.cfg.ChainID, 20)
+		if err != nil {
+			i.logf("trace backfill: list error: %v", err)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+
+		if len(events) == 0 {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+			}
+			continue
+		}
+
+		for _, ev := range events {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+			}
+			if err := i.fetchAndStoreTrace(ctx, &ev); err != nil {
+				if errors.Is(err, errTraceUnsupported) {
+					i.logf("trace backfill disabled: %v", err)
+					return nil
+				}
+				i.logf("trace backfill failed: hash=%s err=%v", ev.UserOpHash, err)
+			}
+		}
+	}
+}
+
+func (i *Indexer) fetchAndStoreTrace(ctx context.Context, ev *store.UserOperationEvent) error {
+	if ev == nil {
+		return nil
+	}
+	if i.client == nil {
+		return errTraceUnsupported
+	}
+	res, err := i.client.TraceTransaction(ctx, common.HexToHash(ev.TxHash))
+	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "method not found") || strings.Contains(errStr, "does not exist") || strings.Contains(errStr, "unsupported method") {
+			return errTraceUnsupported
+		}
+		return err
+	}
+	summary := summarizeTrace(res, ev, i.cfg.EntryPoint)
+	if len(summary.Phases) == 0 {
+		summary.Phases = []PhaseGas{}
+	}
+	data, err := json.Marshal(summary.Phases)
+	if err != nil {
+		return err
+	}
+	trace := &store.UserOperationTrace{
+		ChainID:      i.cfg.ChainID,
+		UserOpHash:   strings.ToLower(ev.UserOpHash),
+		TxHash:       strings.ToLower(ev.TxHash),
+		TraceSummary: string(data),
+	}
+	if err := i.repo.UpsertUserOperationTrace(ctx, trace); err != nil {
+		return err
+	}
+	updated := *ev
+	needsUpdate := false
+	if summary.CallGasLimit != "" && summary.CallGasLimit != ev.CallGasLimit {
+		updated.CallGasLimit = summary.CallGasLimit
+		needsUpdate = true
+	}
+	if summary.VerificationGasLimit != "" && summary.VerificationGasLimit != ev.VerificationGasLimit {
+		updated.VerificationGasLimit = summary.VerificationGasLimit
+		needsUpdate = true
+	}
+	if summary.PaymasterVerificationGasLimit != "" && summary.PaymasterVerificationGasLimit != ev.PaymasterVerificationGasLimit {
+		updated.PaymasterVerificationGasLimit = summary.PaymasterVerificationGasLimit
+		needsUpdate = true
+	}
+	if summary.PaymasterPostOpGasLimit != "" && summary.PaymasterPostOpGasLimit != ev.PaymasterPostOpGasLimit {
+		updated.PaymasterPostOpGasLimit = summary.PaymasterPostOpGasLimit
+		needsUpdate = true
+	}
+	if summary.PreVerificationGas != "" && summary.PreVerificationGas != ev.PreVerificationGas {
+		updated.PreVerificationGas = summary.PreVerificationGas
+		needsUpdate = true
+	}
+	if summary.MaxFeePerGas != "" && summary.MaxFeePerGas != ev.MaxFeePerGas {
+		updated.MaxFeePerGas = summary.MaxFeePerGas
+		needsUpdate = true
+	}
+	if summary.MaxPriorityFeePerGas != "" && summary.MaxPriorityFeePerGas != ev.MaxPriorityFeePerGas {
+		updated.MaxPriorityFeePerGas = summary.MaxPriorityFeePerGas
+		needsUpdate = true
+	}
+	if needsUpdate {
+		if err := i.repo.UpsertUserOperationEvent(ctx, &updated); err != nil {
+			i.logf("trace backfill: failed to refresh event gas fields: hash=%s err=%v", ev.UserOpHash, err)
+		}
+	}
+	i.logf("trace stored: hash=%s phases=%d", ev.UserOpHash, len(summary.Phases))
+	return nil
 }
 
 type writeRequest struct {

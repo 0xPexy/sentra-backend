@@ -502,10 +502,15 @@ func (s *stubEthClient) TransactionByHash(ctx context.Context, hash common.Hash)
 	return nil, false, ethereum.NotFound
 }
 
+func (s *stubEthClient) TraceTransaction(ctx context.Context, hash common.Hash) (*TraceResult, error) {
+	return nil, errTraceUnsupported
+}
+
 type mockRepo struct {
 	mu       sync.Mutex
 	cursors  map[string]*store.LogCursor
 	events   map[string]*store.UserOperationEvent
+	traces   map[string]*store.UserOperationTrace
 	reverts  map[string]*store.UserOperationRevert
 	deploys  map[string]*store.AccountDeployment
 	inits    map[string]*store.SimpleAccountInitialization
@@ -516,6 +521,7 @@ func newMockRepo() *mockRepo {
 	return &mockRepo{
 		cursors:  make(map[string]*store.LogCursor),
 		events:   make(map[string]*store.UserOperationEvent),
+		traces:   make(map[string]*store.UserOperationTrace),
 		reverts:  make(map[string]*store.UserOperationRevert),
 		deploys:  make(map[string]*store.AccountDeployment),
 		inits:    make(map[string]*store.SimpleAccountInitialization),
@@ -551,6 +557,15 @@ func (m *mockRepo) UpsertUserOperationEvent(ctx context.Context, event *store.Us
 	defer m.mu.Unlock()
 	cloned := *event
 	m.events[event.UserOpHash] = &cloned
+	return nil
+}
+
+func (m *mockRepo) UpsertUserOperationTrace(ctx context.Context, trace *store.UserOperationTrace) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cloned := *trace
+	key := strings.ToLower(trace.UserOpHash)
+	m.traces[key] = &cloned
 	return nil
 }
 
@@ -595,6 +610,25 @@ func (m *mockRepo) ListUserOpsMissingCallData(ctx context.Context, chainID uint6
 			continue
 		}
 		if ev.CallSelector != "" {
+			continue
+		}
+		out = append(out, *ev)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (m *mockRepo) ListUserOpsMissingTrace(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []store.UserOperationEvent
+	for _, ev := range m.events {
+		if ev.ChainID != chainID {
+			continue
+		}
+		if _, ok := m.traces[strings.ToLower(ev.UserOpHash)]; ok {
 			continue
 		}
 		out = append(out, *ev)

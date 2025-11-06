@@ -94,37 +94,53 @@ func (d *decoder) decodeUserOperationEvent(ctx context.Context, lg types.Log) ([
 
 	paymaster := common.BytesToAddress(lg.Topics[3].Bytes())
 	event := &store.UserOperationEvent{
-		ChainID:       d.cfg.ChainID,
-		EntryPoint:    lg.Address.Hex(),
-		UserOpHash:    lg.Topics[1].Hex(),
-		Sender:        common.BytesToAddress(lg.Topics[2].Bytes()).Hex(),
-		Paymaster:     normalizeOptionalAddress(paymaster),
-		Nonce:         bigString(nonce),
-		Success:       success,
-		ActualGasCost: bigString(actualGasCost),
-		ActualGasUsed: bigString(actualGasUsed),
-		TxHash:        lg.TxHash.Hex(),
-		BlockNumber:   lg.BlockNumber,
-		LogIndex:      uint(lg.Index),
-		BlockTime:     blockTime,
+		ChainID:                       d.cfg.ChainID,
+		EntryPoint:                    lg.Address.Hex(),
+		UserOpHash:                    lg.Topics[1].Hex(),
+		Sender:                        common.BytesToAddress(lg.Topics[2].Bytes()).Hex(),
+		Paymaster:                     normalizeOptionalAddress(paymaster),
+		Nonce:                         bigString(nonce),
+		Success:                       success,
+		ActualGasCost:                 bigString(actualGasCost),
+		ActualGasUsed:                 bigString(actualGasUsed),
+		Beneficiary:                   "",
+		CallGasLimit:                  "0",
+		VerificationGasLimit:          "0",
+		PreVerificationGas:            "0",
+		MaxFeePerGas:                  "0",
+		MaxPriorityFeePerGas:          "0",
+		PaymasterVerificationGasLimit: "0",
+		PaymasterPostOpGasLimit:       "0",
+		TxHash:                        lg.TxHash.Hex(),
+		BlockNumber:                   lg.BlockNumber,
+		LogIndex:                      uint(lg.Index),
+		CallSelector:                  unknownSelector,
+		BlockTime:                     blockTime,
 	}
 	if d.callDec != nil {
-		if target, selector, err := d.callDec.extract(ctx, lg.TxHash, event.UserOpHash); err != nil {
+		if meta, err := d.callDec.extract(ctx, lg.TxHash, event.UserOpHash); err != nil {
 			d.logf("call metadata decode failed: hash=%s err=%v", event.UserOpHash, err)
-			event.CallSelector = unknownSelector
-		} else {
-			if target != "" {
-				event.Target = strings.ToLower(target)
+		} else if meta != nil {
+			if meta.target != "" {
+				event.Target = strings.ToLower(meta.target)
 			}
-			if selector != "" {
-				event.CallSelector = strings.ToLower(selector)
+			if meta.selector != "" {
+				event.CallSelector = strings.ToLower(meta.selector)
 			} else {
 				event.CallSelector = unknownSelector
 			}
+			if meta.beneficiary != "" {
+				event.Beneficiary = meta.beneficiary
+			}
+			event.CallGasLimit = bigString(meta.callGasLimit)
+			event.VerificationGasLimit = bigString(meta.verificationGasLimit)
+			event.PreVerificationGas = bigString(meta.preVerificationGas)
+			event.MaxFeePerGas = bigString(meta.maxFeePerGas)
+			event.MaxPriorityFeePerGas = bigString(meta.maxPriorityFeePerGas)
+			event.PaymasterVerificationGasLimit = bigString(meta.paymasterVerificationLimit)
+			event.PaymasterPostOpGasLimit = bigString(meta.paymasterPostOpLimit)
 			d.logf("call metadata decoded: hash=%s target=%s selector=%s", event.UserOpHash, event.Target, event.CallSelector)
 		}
-	} else {
-		event.CallSelector = unknownSelector
 	}
 	d.logf("UserOp event: hash=%s tx=%s success=%t block=%d", event.UserOpHash, event.TxHash, event.Success, event.BlockNumber)
 
@@ -306,8 +322,16 @@ func normalizeOptionalAddress(addr common.Address) string {
 }
 
 type callMetadata struct {
-	target   string
-	selector string
+	target                     string
+	selector                   string
+	beneficiary                string
+	verificationGasLimit       *big.Int
+	callGasLimit               *big.Int
+	preVerificationGas         *big.Int
+	maxFeePerGas               *big.Int
+	maxPriorityFeePerGas       *big.Int
+	paymasterVerificationLimit *big.Int
+	paymasterPostOpLimit       *big.Int
 }
 
 type userOpCallDecoder struct {
@@ -346,32 +370,32 @@ func newUserOpCallDecoder(cfg Config, client EthClient, logger *log.Logger) *use
 	return dec
 }
 
-func (d *userOpCallDecoder) extract(ctx context.Context, txHash common.Hash, userOpHash string) (string, string, error) {
+func (d *userOpCallDecoder) extract(ctx context.Context, txHash common.Hash, userOpHash string) (*callMetadata, error) {
 	if d == nil {
-		return "", "", nil
+		return nil, nil
 	}
 	meta, err := d.decodeTransaction(ctx, txHash)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	if meta == nil {
-		return "", "", nil
+		return nil, nil
 	}
 	key := strings.ToLower(userOpHash)
 	if info, ok := meta[key]; ok {
-		return info.target, info.selector, nil
+		return info, nil
 	}
 	if len(meta) == 1 {
 		for k, info := range meta {
 			d.logf("call metadata: userOpHash mismatch requested=%s available=%s (using fallback)", key, k)
-			return info.target, info.selector, nil
+			return info, nil
 		}
 	}
 	d.logf("call metadata: no entry for hash=%s", key)
-	return "", "", nil
+	return nil, nil
 }
 
-func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common.Hash) (map[string]callMetadata, error) {
+func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common.Hash) (map[string]*callMetadata, error) {
 	d.logf("call metadata: fetching tx %s", txHash.Hex())
 	tx, _, err := d.client.TransactionByHash(ctx, txHash)
 	if err != nil {
@@ -409,7 +433,7 @@ func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common
 			return nil, err
 		}
 		d.logf("call metadata: handleOps unpacked %d ops", len(input.Ops))
-		return d.buildMetadata(input.Ops)
+		return d.buildMetadata(input.Ops, input.Beneficiary)
 	case d.handleOpID != nil && bytes.Equal(selector, d.handleOpID):
 		method := d.handleABI.Methods["handleOp"]
 		values, err := method.Inputs.Unpack(data[4:])
@@ -427,14 +451,15 @@ func (d *userOpCallDecoder) decodeTransaction(ctx context.Context, txHash common
 			return nil, err
 		}
 		d.logf("call metadata: handleOp unpacked 1 op")
-		return d.buildMetadata([]abiUserOperation{input.Op})
+		return d.buildMetadata([]abiUserOperation{input.Op}, input.Beneficiary)
 	default:
 		return nil, nil
 	}
 }
 
-func (d *userOpCallDecoder) buildMetadata(ops []abiUserOperation) (map[string]callMetadata, error) {
-	out := make(map[string]callMetadata, len(ops))
+func (d *userOpCallDecoder) buildMetadata(ops []abiUserOperation, beneficiary common.Address) (map[string]*callMetadata, error) {
+	out := make(map[string]*callMetadata, len(ops))
+	beneficiaryStr := strings.ToLower(normalizeOptionalAddress(beneficiary))
 	for _, op := range ops {
 		hash, err := d.computeUserOpHash(op)
 		if err != nil {
@@ -445,9 +470,20 @@ func (d *userOpCallDecoder) buildMetadata(ops []abiUserOperation) (map[string]ca
 		}
 		target, selector := d.decodeCallData(op.CallData)
 		d.logf("call metadata: op hash=%s selector=%s target=%s callDataLen=%d", strings.ToLower(hash.Hex()), selector, target, len(op.CallData))
-		out[strings.ToLower(hash.Hex())] = callMetadata{
-			target:   target,
-			selector: selector,
+		verificationGasLimit, callGasLimit := splitUint128Pair(op.AccountGasLimits)
+		maxPriorityFeePerGas, maxFeePerGas := splitUint128Pair(op.GasFees)
+		paymasterVerification, paymasterPostOp := parsePaymasterGasLimits(op.PaymasterAndData)
+		out[strings.ToLower(hash.Hex())] = &callMetadata{
+			target:                     target,
+			selector:                   selector,
+			beneficiary:                beneficiaryStr,
+			verificationGasLimit:       verificationGasLimit,
+			callGasLimit:               callGasLimit,
+			preVerificationGas:         ensureBigInt(op.PreVerificationGas),
+			maxFeePerGas:               maxFeePerGas,
+			maxPriorityFeePerGas:       maxPriorityFeePerGas,
+			paymasterVerificationLimit: paymasterVerification,
+			paymasterPostOpLimit:       paymasterPostOp,
 		}
 	}
 	return out, nil
@@ -535,6 +571,28 @@ func ensureBigInt(v *big.Int) *big.Int {
 		return big.NewInt(0)
 	}
 	return new(big.Int).Set(v)
+}
+
+func splitUint128Pair(data [32]byte) (*big.Int, *big.Int) {
+	hi := new(big.Int).SetBytes(data[:16])
+	lo := new(big.Int).SetBytes(data[16:])
+	return nilIfZero(hi), nilIfZero(lo)
+}
+
+func parsePaymasterGasLimits(data []byte) (*big.Int, *big.Int) {
+	if len(data) < 84 {
+		return nil, nil
+	}
+	verification := new(big.Int).SetBytes(data[20:52])
+	postOp := new(big.Int).SetBytes(data[52:84])
+	return nilIfZero(verification), nilIfZero(postOp)
+}
+
+func nilIfZero(x *big.Int) *big.Int {
+	if x == nil || x.Sign() == 0 {
+		return nil
+	}
+	return x
 }
 
 func mustArguments(types ...string) abi.Arguments {

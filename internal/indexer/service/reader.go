@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math"
 	"math/big"
@@ -117,19 +118,58 @@ type ListUserOpsParams struct {
 }
 
 type UserOperationItem struct {
-	UserOpHash    string    `json:"userOpHash"`
-	Sender        string    `json:"sender"`
-	Paymaster     string    `json:"paymaster,omitempty"`
-	Target        string    `json:"target,omitempty"`
-	Selector      string    `json:"selector,omitempty"`
-	Status        string    `json:"status"`
-	BlockNumber   uint64    `json:"blockNumber"`
-	LogIndex      uint      `json:"logIndex"`
-	TxHash        string    `json:"txHash"`
-	ActualGasUsed string    `json:"actualGasUsed"`
-	ActualGasCost string    `json:"actualGasCost"`
-	RevertReason  string    `json:"revertReason,omitempty"`
-	BlockTime     time.Time `json:"blockTime"`
+	UserOpHash                    string    `json:"userOpHash"`
+	Sender                        string    `json:"sender"`
+	Paymaster                     string    `json:"paymaster,omitempty"`
+	Target                        string    `json:"target,omitempty"`
+	Selector                      string    `json:"selector,omitempty"`
+	Status                        string    `json:"status"`
+	BlockNumber                   uint64    `json:"blockNumber"`
+	LogIndex                      uint      `json:"logIndex"`
+	TxHash                        string    `json:"txHash"`
+	ActualGasUsed                 string    `json:"actualGasUsed"`
+	ActualGasCost                 string    `json:"actualGasCost"`
+	Beneficiary                   string    `json:"beneficiary,omitempty"`
+	CallGasLimit                  string    `json:"callGasLimit"`
+	VerificationGasLimit          string    `json:"verificationGasLimit"`
+	PreVerificationGas            string    `json:"preVerificationGas"`
+	MaxFeePerGas                  string    `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas          string    `json:"maxPriorityFeePerGas"`
+	PaymasterVerificationGasLimit string    `json:"paymasterVerificationGasLimit"`
+	PaymasterPostOpGasLimit       string    `json:"paymasterPostOpGasLimit"`
+	RevertReason                  string    `json:"revertReason,omitempty"`
+	BlockTime                     time.Time `json:"blockTime"`
+}
+
+type GasBreakdown struct {
+	Stage   string `json:"stage"`
+	Method  string `json:"method,omitempty"`
+	Type    string `json:"type,omitempty"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Gas     string `json:"gas"`
+	GasUsed string `json:"gasUsed"`
+}
+
+type PhaseGas struct {
+	Phase    string `json:"phase"`
+	GasUsed  string `json:"gasUsed"`
+	GasLimit string `json:"gasLimit,omitempty"`
+}
+
+type UserOperationGas struct {
+	UserOpHash                    string     `json:"userOpHash"`
+	TxHash                        string     `json:"txHash"`
+	ActualGasUsed                 string     `json:"actualGasUsed"`
+	ActualGasCost                 string     `json:"actualGasCost"`
+	CallGasLimit                  string     `json:"callGasLimit"`
+	VerificationGasLimit          string     `json:"verificationGasLimit"`
+	PreVerificationGas            string     `json:"preVerificationGas"`
+	MaxFeePerGas                  string     `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas          string     `json:"maxPriorityFeePerGas"`
+	PaymasterVerificationGasLimit string     `json:"paymasterVerificationGasLimit"`
+	PaymasterPostOpGasLimit       string     `json:"paymasterPostOpGasLimit"`
+	Phases                        []PhaseGas `json:"phases"`
 }
 
 type ListUserOpsResult struct {
@@ -163,19 +203,27 @@ func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParam
 			status = "success"
 		}
 		items = append(items, UserOperationItem{
-			UserOpHash:    row.UserOpHash,
-			Sender:        row.Sender,
-			Paymaster:     row.Paymaster,
-			Target:        strings.ToLower(row.Target),
-			Selector:      sanitizeSelector(row.CallSelector),
-			Status:        status,
-			BlockNumber:   row.BlockNumber,
-			LogIndex:      row.LogIndex,
-			TxHash:        row.TxHash,
-			ActualGasUsed: row.ActualGasUsed,
-			ActualGasCost: row.ActualGasCost,
-			RevertReason:  row.RevertReason,
-			BlockTime:     row.BlockTime,
+			UserOpHash:                    row.UserOpHash,
+			Sender:                        row.Sender,
+			Paymaster:                     row.Paymaster,
+			Target:                        strings.ToLower(row.Target),
+			Selector:                      sanitizeSelector(row.CallSelector),
+			Status:                        status,
+			BlockNumber:                   row.BlockNumber,
+			LogIndex:                      row.LogIndex,
+			TxHash:                        row.TxHash,
+			ActualGasUsed:                 row.ActualGasUsed,
+			ActualGasCost:                 row.ActualGasCost,
+			Beneficiary:                   row.Beneficiary,
+			CallGasLimit:                  row.CallGasLimit,
+			VerificationGasLimit:          row.VerificationGasLimit,
+			PreVerificationGas:            row.PreVerificationGas,
+			MaxFeePerGas:                  row.MaxFeePerGas,
+			MaxPriorityFeePerGas:          row.MaxPriorityFeePerGas,
+			PaymasterVerificationGasLimit: row.PaymasterVerificationGasLimit,
+			PaymasterPostOpGasLimit:       row.PaymasterPostOpGasLimit,
+			RevertReason:                  row.RevertReason,
+			BlockTime:                     row.BlockTime,
 		})
 	}
 	page := params.Page
@@ -203,10 +251,11 @@ func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParam
 
 type UserOperationDetail struct {
 	UserOperationItem
-	Nonce       string            `json:"nonce"`
-	Events      []UserOpEventInfo `json:"events"`
-	Revert      *RevertInfo       `json:"revert,omitempty"`
-	Sponsorship *SponsorshipInfo  `json:"sponsorship,omitempty"`
+	Nonce        string            `json:"nonce"`
+	Events       []UserOpEventInfo `json:"events"`
+	Revert       *RevertInfo       `json:"revert,omitempty"`
+	Sponsorship  *SponsorshipInfo  `json:"sponsorship,omitempty"`
+	GasBreakdown []GasBreakdown    `json:"gasBreakdown,omitempty"`
 }
 
 type UserOpEventInfo struct {
@@ -269,19 +318,27 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		status = "success"
 	}
 	item := UserOperationItem{
-		UserOpHash:    row.UserOpHash,
-		Sender:        row.Sender,
-		Paymaster:     row.Paymaster,
-		Target:        strings.ToLower(row.Target),
-		Selector:      sanitizeSelector(row.CallSelector),
-		Status:        status,
-		BlockNumber:   row.BlockNumber,
-		LogIndex:      row.LogIndex,
-		TxHash:        row.TxHash,
-		ActualGasUsed: row.ActualGasUsed,
-		ActualGasCost: row.ActualGasCost,
-		RevertReason:  row.RevertReason,
-		BlockTime:     row.BlockTime,
+		UserOpHash:                    row.UserOpHash,
+		Sender:                        row.Sender,
+		Paymaster:                     row.Paymaster,
+		Target:                        strings.ToLower(row.Target),
+		Selector:                      sanitizeSelector(row.CallSelector),
+		Status:                        status,
+		BlockNumber:                   row.BlockNumber,
+		LogIndex:                      row.LogIndex,
+		TxHash:                        row.TxHash,
+		ActualGasUsed:                 row.ActualGasUsed,
+		ActualGasCost:                 row.ActualGasCost,
+		Beneficiary:                   row.Beneficiary,
+		CallGasLimit:                  row.CallGasLimit,
+		VerificationGasLimit:          row.VerificationGasLimit,
+		PreVerificationGas:            row.PreVerificationGas,
+		MaxFeePerGas:                  row.MaxFeePerGas,
+		MaxPriorityFeePerGas:          row.MaxPriorityFeePerGas,
+		PaymasterVerificationGasLimit: row.PaymasterVerificationGasLimit,
+		PaymasterPostOpGasLimit:       row.PaymasterPostOpGasLimit,
+		RevertReason:                  row.RevertReason,
+		BlockTime:                     row.BlockTime,
 	}
 	var revertInfo *RevertInfo
 	if row.RevertReason != "" {
@@ -321,6 +378,17 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 			TxHash:      row.TxHash,
 		})
 	}
+	var gasBreakdown []GasBreakdown
+	if raw := strings.TrimSpace(row.TraceSummary); raw != "" && raw != "null" {
+		if err := json.Unmarshal([]byte(raw), &gasBreakdown); err != nil {
+			var phases []PhaseGas
+			if err2 := json.Unmarshal([]byte(raw), &phases); err2 == nil {
+				gasBreakdown = phasesToBreakdown(phases)
+			} else {
+				gasBreakdown = nil
+			}
+		}
+	}
 
 	return &UserOperationDetail{
 		UserOperationItem: item,
@@ -328,7 +396,144 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		Events:            eventLog,
 		Revert:            revertInfo,
 		Sponsorship:       sponsorship,
+		GasBreakdown:      gasBreakdown,
 	}, nil
+}
+
+func (r *Reader) GetUserOperationGas(ctx context.Context, chainID uint64, userOpHash string) (*UserOperationGas, error) {
+	row, err := r.repo.GetUserOperationDetail(ctx, chainID, userOpHash)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	var phases []PhaseGas
+	if raw := strings.TrimSpace(row.TraceSummary); raw != "" && raw != "null" {
+		data := []byte(raw)
+		useLegacy := false
+		if err := json.Unmarshal(data, &phases); err != nil {
+			useLegacy = true
+		} else {
+			allEmpty := len(phases) > 0
+			if allEmpty {
+				for _, p := range phases {
+					if strings.TrimSpace(p.Phase) != "" {
+						allEmpty = false
+						break
+					}
+				}
+			}
+			if allEmpty {
+				useLegacy = true
+			}
+		}
+		if useLegacy {
+			var legacy []GasBreakdown
+			if err2 := json.Unmarshal(data, &legacy); err2 == nil {
+				phases = convertLegacyBreakdown(legacy)
+			} else {
+				phases = nil
+			}
+		}
+	}
+	return &UserOperationGas{
+		UserOpHash:                    row.UserOpHash,
+		TxHash:                        row.TxHash,
+		ActualGasUsed:                 row.ActualGasUsed,
+		ActualGasCost:                 row.ActualGasCost,
+		CallGasLimit:                  row.CallGasLimit,
+		VerificationGasLimit:          row.VerificationGasLimit,
+		PreVerificationGas:            row.PreVerificationGas,
+		MaxFeePerGas:                  row.MaxFeePerGas,
+		MaxPriorityFeePerGas:          row.MaxPriorityFeePerGas,
+		PaymasterVerificationGasLimit: row.PaymasterVerificationGasLimit,
+		PaymasterPostOpGasLimit:       row.PaymasterPostOpGasLimit,
+		Phases:                        phases,
+	}, nil
+}
+
+func convertLegacyBreakdown(items []GasBreakdown) []PhaseGas {
+	if len(items) == 0 {
+		return nil
+	}
+	totals := map[string]*big.Int{
+		"validation": big.NewInt(0),
+		"execution":  big.NewInt(0),
+		"postOp":     big.NewInt(0),
+	}
+	for _, item := range items {
+		phase := stageToPhase(item.Stage)
+		if phase == "" {
+			continue
+		}
+		if val := parseBigIntString(item.GasUsed); val != nil {
+			totals[phase].Add(totals[phase], val)
+		}
+	}
+	order := []string{"validation", "execution", "postOp"}
+	var phases []PhaseGas
+	for _, phase := range order {
+		total := totals[phase]
+		if total == nil {
+			total = big.NewInt(0)
+		}
+		phases = append(phases, PhaseGas{
+			Phase:    phase,
+			GasUsed:  total.String(),
+			GasLimit: "0",
+		})
+	}
+	return phases
+}
+
+func phasesToBreakdown(phases []PhaseGas) []GasBreakdown {
+	if len(phases) == 0 {
+		return nil
+	}
+	out := make([]GasBreakdown, 0, len(phases))
+	for _, phase := range phases {
+		out = append(out, GasBreakdown{
+			Stage:   phase.Phase,
+			Gas:     phase.GasLimit,
+			GasUsed: phase.GasUsed,
+		})
+	}
+	return out
+}
+
+func stageToPhase(stage string) string {
+	s := strings.ToLower(stage)
+	switch {
+	case strings.Contains(s, "validate"):
+		return "validation"
+	case strings.Contains(s, "post"):
+		return "postOp"
+	default:
+		return "execution"
+	}
+}
+
+func parseBigIntString(v string) *big.Int {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	if strings.HasPrefix(v, "0x") || strings.HasPrefix(v, "0X") {
+		value := strings.TrimPrefix(strings.TrimPrefix(v, "0x"), "0X")
+		if value == "" {
+			return nil
+		}
+		num, ok := new(big.Int).SetString(value, 16)
+		if !ok {
+			return nil
+		}
+		return num
+	}
+	if num, ok := new(big.Int).SetString(v, 10); ok {
+		return num
+	}
+	return nil
 }
 
 type PaymasterOpsParams struct {
@@ -361,19 +566,27 @@ func (r *Reader) ListPaymasterOperations(ctx context.Context, params PaymasterOp
 			status = "success"
 		}
 		items = append(items, UserOperationItem{
-			UserOpHash:    row.UserOpHash,
-			Sender:        row.Sender,
-			Paymaster:     row.Paymaster,
-			Target:        strings.ToLower(row.Target),
-			Selector:      sanitizeSelector(row.CallSelector),
-			Status:        status,
-			BlockNumber:   row.BlockNumber,
-			LogIndex:      row.LogIndex,
-			TxHash:        row.TxHash,
-			ActualGasUsed: row.ActualGasUsed,
-			ActualGasCost: row.ActualGasCost,
-			RevertReason:  row.RevertReason,
-			BlockTime:     row.BlockTime,
+			UserOpHash:                    row.UserOpHash,
+			Sender:                        row.Sender,
+			Paymaster:                     row.Paymaster,
+			Target:                        strings.ToLower(row.Target),
+			Selector:                      sanitizeSelector(row.CallSelector),
+			Status:                        status,
+			BlockNumber:                   row.BlockNumber,
+			LogIndex:                      row.LogIndex,
+			TxHash:                        row.TxHash,
+			ActualGasUsed:                 row.ActualGasUsed,
+			ActualGasCost:                 row.ActualGasCost,
+			Beneficiary:                   row.Beneficiary,
+			CallGasLimit:                  row.CallGasLimit,
+			VerificationGasLimit:          row.VerificationGasLimit,
+			PreVerificationGas:            row.PreVerificationGas,
+			MaxFeePerGas:                  row.MaxFeePerGas,
+			MaxPriorityFeePerGas:          row.MaxPriorityFeePerGas,
+			PaymasterVerificationGasLimit: row.PaymasterVerificationGasLimit,
+			PaymasterPostOpGasLimit:       row.PaymasterPostOpGasLimit,
+			RevertReason:                  row.RevertReason,
+			BlockTime:                     row.BlockTime,
 		})
 	}
 	page := params.Page

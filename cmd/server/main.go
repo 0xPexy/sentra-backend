@@ -19,6 +19,7 @@ import (
 	"github.com/0xPexy/sentra-backend/internal/store"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // @title Sentinel 4337 Backend API
@@ -47,10 +48,19 @@ func main() {
 		store.EnsureDevAdmin(db, auth.DevAdminID(), cfg.Auth.DevAdminUser)
 	}
 	policy := erc7677.NewPolicy(repo, cfg)
-	ethClient, err := ethclient.Dial(cfg.Chain.RPCURL)
+	rpcClient, err := rpc.Dial(cfg.Chain.RPCURL)
 	if err != nil {
 		log.Fatalf("failed to connect chain rpc: %v", err)
 	}
+
+	ethClient := ethclient.NewClient(rpcClient)
+	defer ethClient.Close()
+
+	traceClient, err := pipeline.NewTraceableEthClient(ethClient, rpcClient)
+	if err != nil {
+		log.Fatalf("failed to create traceable client: %v", err)
+	}
+
 	chainID, err := ethClient.ChainID(context.Background())
 	if err != nil {
 		log.Fatalf("failed to get chain id: %v", err)
@@ -76,7 +86,7 @@ func main() {
 			DecodeWorkerCount: cfg.Indexer.DecodeWorkers,
 			WriteWorkerCount:  cfg.Indexer.WriteWorkers,
 		}
-		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo, eventHub), ethClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
+		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo, eventHub), traceClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
 	}
 
 	pmLogger := log.New(log.Writer(), "pm: ", log.LstdFlags)

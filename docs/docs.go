@@ -45,19 +45,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.AddressLookupResponse"
+                            "$ref": "#/definitions/internal_server.AddressLookupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/internal_server.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/internal_server.ErrorResponse"
                         }
                     }
                 }
@@ -231,6 +231,64 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ops/{userOpHash}/gas": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Operations"
+                ],
+                "summary": "Get user operation gas breakdown",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User operation hash",
+                        "name": "userOpHash",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Chain ID override",
+                        "name": "chain_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationGas"
                         }
                     },
                     "400": {
@@ -1045,6 +1103,32 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "gas": {
+                    "type": "string"
+                },
+                "gasUsed": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_0xPexy_sentra-backend_internal_indexer_service.PaymasterOverview": {
             "type": "object",
             "properties": {
@@ -1059,6 +1143,20 @@ const docTemplate = `{
                 },
                 "totalSponsoredOps": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.PhaseGas": {
+            "type": "object",
+            "properties": {
+                "gasLimit": {
+                    "type": "string"
+                },
+                "gasUsed": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
                 }
             }
         },
@@ -1153,10 +1251,16 @@ const docTemplate = `{
                 "actualGasUsed": {
                     "type": "string"
                 },
+                "beneficiary": {
+                    "type": "string"
+                },
                 "blockNumber": {
                     "type": "integer"
                 },
                 "blockTime": {
+                    "type": "string"
+                },
+                "callGasLimit": {
                     "type": "string"
                 },
                 "events": {
@@ -1165,13 +1269,34 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.UserOpEventInfo"
                     }
                 },
+                "gasBreakdown": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown"
+                    }
+                },
                 "logIndex": {
                     "type": "integer"
+                },
+                "maxFeePerGas": {
+                    "type": "string"
+                },
+                "maxPriorityFeePerGas": {
+                    "type": "string"
                 },
                 "nonce": {
                     "type": "string"
                 },
                 "paymaster": {
+                    "type": "string"
+                },
+                "paymasterPostOpGasLimit": {
+                    "type": "string"
+                },
+                "paymasterVerificationGasLimit": {
+                    "type": "string"
+                },
+                "preVerificationGas": {
                     "type": "string"
                 },
                 "revert": {
@@ -1199,6 +1324,53 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "userOpHash": {
+                    "type": "string"
+                },
+                "verificationGasLimit": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.UserOperationGas": {
+            "type": "object",
+            "properties": {
+                "actualGasCost": {
+                    "type": "string"
+                },
+                "actualGasUsed": {
+                    "type": "string"
+                },
+                "callGasLimit": {
+                    "type": "string"
+                },
+                "maxFeePerGas": {
+                    "type": "string"
+                },
+                "maxPriorityFeePerGas": {
+                    "type": "string"
+                },
+                "paymasterPostOpGasLimit": {
+                    "type": "string"
+                },
+                "paymasterVerificationGasLimit": {
+                    "type": "string"
+                },
+                "phases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.PhaseGas"
+                    }
+                },
+                "preVerificationGas": {
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                },
+                "userOpHash": {
+                    "type": "string"
+                },
+                "verificationGasLimit": {
                     "type": "string"
                 }
             }
@@ -1550,7 +1722,7 @@ const docTemplate = `{
                 }
             }
         },
-        "server.AddressLookupResponse": {
+        "internal_server.AddressLookupResponse": {
             "type": "object",
             "properties": {
                 "address": {
@@ -1558,7 +1730,7 @@ const docTemplate = `{
                 }
             }
         },
-        "server.ErrorResponse": {
+        "internal_server.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
