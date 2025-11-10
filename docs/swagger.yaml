@@ -419,6 +419,17 @@ definitions:
       error:
         type: string
     type: object
+  internal_server.playgroundNFTResponse:
+    properties:
+      description:
+        type: string
+      external_url:
+        type: string
+      image:
+        type: string
+      name:
+        type: string
+    type: object
 info:
   contact: {}
   description: API documentation for the Sentinel 4337 backend service.
@@ -1057,6 +1068,18 @@ paths:
       summary: Remove a user from the paymaster whitelist
       tags:
       - Users
+  /api/v1/playground/nft:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.playgroundNFTResponse'
+      summary: Playground demo NFT metadata
+      tags:
+      - Playground
   /api/v1/stats/overview:
     get:
       produces:

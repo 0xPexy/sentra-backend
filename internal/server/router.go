@@ -29,9 +29,13 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	addrH := newAddressHandler(cfg)
 	idxH := newIndexerHandler(cfg, repo, reader, hub)
+	playgroundH := newPlaygroundHandler(cfg)
+	r.Static("/static", "./static")
+
 	api := r.Group("/api/v1")
 	api.GET("/addresses", addrH.LookupAddress)
 	api.GET("/events", idxH.StreamEvents)
+	api.GET("/playground/nft", playgroundH.NFTMetadata)
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)

@@ -1011,6 +1011,25 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/playground/nft": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Playground"
+                ],
+                "summary": "Playground demo NFT metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.playgroundNFTResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/stats/overview": {
             "get": {
                 "security": [
@@ -1734,6 +1753,23 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_server.playgroundNFTResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "external_url": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }
