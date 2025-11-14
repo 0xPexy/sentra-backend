@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/addresses": {
             "get": {
-                "description": "Returns the configured address for supported contracts: entrypoint, simple_account_factory, paymaster.",
+                "description": "Returns the configured address for supported contracts: entrypoint, simple_account_factory, paymaster, erc721.",
                 "produces": [
                     "application/json"
                 ],
@@ -32,7 +32,10 @@ const docTemplate = `{
                             "entry_point",
                             "simple_account_factory",
                             "factory",
-                            "paymaster"
+                            "paymaster",
+                            "erc721",
+                            "nft",
+                            "playground_nft"
                         ],
                         "type": "string",
                         "description": "Contract identifier",
@@ -58,6 +61,47 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/internal_server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/bundler": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bundler"
+                ],
+                "summary": "Proxy JSON-RPC requests to configured bundler",
+                "parameters": [
+                    {
+                        "description": "JSON-RPC payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {}
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.bundlerProxyResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.bundlerProxyResponse"
                         }
                     }
                 }
@@ -1750,6 +1794,14 @@ const docTemplate = `{
             }
         },
         "internal_server.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_server.bundlerProxyResponse": {
             "type": "object",
             "properties": {
                 "error": {

@@ -419,6 +419,11 @@ definitions:
       error:
         type: string
     type: object
+  internal_server.bundlerProxyResponse:
+    properties:
+      error:
+        type: string
+    type: object
   internal_server.playgroundNFTResponse:
     properties:
       description:
@@ -439,7 +444,7 @@ paths:
   /api/v1/addresses:
     get:
       description: 'Returns the configured address for supported contracts: entrypoint,
-        simple_account_factory, paymaster.'
+        simple_account_factory, paymaster, erc721.'
       parameters:
       - description: Contract identifier
         enum:
@@ -448,6 +453,9 @@ paths:
         - simple_account_factory
         - factory
         - paymaster
+        - erc721
+        - nft
+        - playground_nft
         in: query
         name: contract
         required: true
@@ -470,6 +478,33 @@ paths:
       summary: Lookup configured contract address
       tags:
       - Addresses
+  /api/v1/bundler:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: JSON-RPC payload
+        in: body
+        name: request
+        required: true
+        schema: {}
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_server.bundlerProxyResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/internal_server.bundlerProxyResponse'
+      summary: Proxy JSON-RPC requests to configured bundler
+      tags:
+      - Bundler
   /api/v1/contracts/{name}:
     get:
       parameters:

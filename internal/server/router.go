@@ -15,7 +15,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler, repo *store.Repository, reader *indexersvc.Reader, hub *EventHub) *gin.Engine {
+func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, adminH *admin.Handler, repo *store.Repository, reader *indexersvc.Reader, hub *EventHub, playgroundHub *PlaygroundHub) *gin.Engine {
 	r := gin.New()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -30,12 +30,17 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	addrH := newAddressHandler(cfg)
 	idxH := newIndexerHandler(cfg, repo, reader, hub)
 	playgroundH := newPlaygroundHandler(cfg)
+	bundlerH := newBundlerHandler(cfg)
 	r.Static("/static", "./static")
 
 	api := r.Group("/api/v1")
 	api.GET("/addresses", addrH.LookupAddress)
 	api.GET("/events", idxH.StreamEvents)
+	if playgroundHub != nil {
+		api.GET("/playground/events", playgroundHub.ServeWS)
+	}
 	api.GET("/playground/nft", playgroundH.NFTMetadata)
+	api.POST("/bundler", bundlerH.Proxy)
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)

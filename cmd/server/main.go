@@ -22,6 +22,34 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+type combinedEventSink struct {
+	sinks []pipeline.EventSink
+}
+
+func newCombinedSink(sinks ...pipeline.EventSink) pipeline.EventSink {
+	valid := make([]pipeline.EventSink, 0, len(sinks))
+	for _, s := range sinks {
+		if s != nil {
+			valid = append(valid, s)
+		}
+	}
+	if len(valid) == 0 {
+		return nil
+	}
+	if len(valid) == 1 {
+		return valid[0]
+	}
+	return &combinedEventSink{sinks: valid}
+}
+
+func (c *combinedEventSink) PublishUserOperation(event *store.UserOperationEvent) {
+	for _, sink := range c.sinks {
+		if sink != nil {
+			sink.PublishUserOperation(event)
+		}
+	}
+}
+
 // @title Sentinel 4337 Backend API
 // @version 1.0
 // @description API documentation for the Sentinel 4337 backend service.
@@ -42,6 +70,7 @@ func main() {
 
 	repo := store.NewRepository(db)
 	eventHub := server.NewEventHub(log.New(log.Writer(), "events: ", log.LstdFlags))
+	playgroundHub := server.NewPlaygroundHub(log.New(log.Writer(), "playground: ", log.LstdFlags))
 	indexerReader := indexersvc.NewReader(repo)
 	authSvc := auth.NewService(cfg.Auth.JWTSecret, repo, cfg.Auth.JWTTTL, cfg.Auth.DevToken)
 	if cfg.Auth.DevToken != "" {
@@ -86,19 +115,23 @@ func main() {
 			DecodeWorkerCount: cfg.Indexer.DecodeWorkers,
 			WriteWorkerCount:  cfg.Indexer.WriteWorkers,
 		}
-		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo, eventHub), traceClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
+		sink := newCombinedSink(eventHub, playgroundHub)
+		sentraIndexer = pipeline.New(idxCfg, pipeline.NewStoreAdapter(repo, sink), traceClient, log.New(log.Writer(), "indexer: ", log.LstdFlags))
 	}
 
 	pmLogger := log.New(log.Writer(), "pm: ", log.LstdFlags)
 	pm := erc7677.NewHandler(cfg, repo, policy, signer, ethClient, pmLogger)
 	adminH := admin.NewHandler(authSvc, repo, cfg)
 
-	r := server.NewRouter(cfg, authSvc, pm, adminH, repo, indexerReader, eventHub)
+	r := server.NewRouter(cfg, authSvc, pm, adminH, repo, indexerReader, eventHub, playgroundHub)
 	srv := server.NewHTTP(cfg.Server.HTTPAddr, r)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go eventHub.Run(ctx)
+	if playgroundHub != nil {
+		go playgroundHub.Run(ctx)
+	}
 	if sentraIndexer != nil {
 		go func() {
 			if err := sentraIndexer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
