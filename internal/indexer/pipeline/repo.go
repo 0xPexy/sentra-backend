@@ -15,6 +15,7 @@ type Repo interface {
 	UpsertAccountDeployment(ctx context.Context, dep *store.AccountDeployment) error
 	UpsertSimpleAccountInitialization(ctx context.Context, init *store.SimpleAccountInitialization) error
 	UpsertSponsorship(ctx context.Context, s *store.Sponsorship) error
+	UpsertNFTToken(ctx context.Context, token *store.NFTToken) error
 	ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error)
 	ListUserOpsMissingTrace(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error)
 }
@@ -69,6 +70,10 @@ func (a *StoreAdapter) UpsertSimpleAccountInitialization(ctx context.Context, in
 
 func (a *StoreAdapter) UpsertSponsorship(ctx context.Context, s *store.Sponsorship) error {
 	return a.repo.UpsertSponsorship(ctx, s)
+}
+
+func (a *StoreAdapter) UpsertNFTToken(ctx context.Context, token *store.NFTToken) error {
+	return a.repo.UpsertNFTToken(ctx, token)
 }
 
 func (a *StoreAdapter) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]store.UserOperationEvent, error) {

@@ -104,9 +104,14 @@ func main() {
 			addr := common.HexToAddress(cfg.Paymaster.Address)
 			paymasterAddrPtr = &addr
 		}
+		var nftAddr common.Address
+		if cfg.Chain.ERC721Address != "" {
+			nftAddr = common.HexToAddress(cfg.Chain.ERC721Address)
+		}
 		idxCfg := pipeline.Config{
 			ChainID:           chainID.Uint64(),
 			EntryPoint:        entryPointAddr,
+			ERC721:            nftAddr,
 			Paymaster:         paymasterAddrPtr,
 			DeploymentBlock:   cfg.Chain.EntryPointDeployBlock,
 			ChunkSize:         cfg.Indexer.ChunkSize,

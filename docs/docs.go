@@ -240,6 +240,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/nfts/{address}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Playground"
+                ],
+                "summary": "List NFTs owned by address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Chain ID override",
+                        "name": "chain_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ERC721 contract address override",
+                        "name": "contract",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/ops/{userOpHash}": {
             "get": {
                 "security": [
@@ -1166,6 +1219,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown": {
             "type": "object",
             "properties": {
@@ -1188,6 +1258,31 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.NFTListResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem"
+                    }
+                }
+            }
+        },
+        "github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem": {
+            "type": "object",
+            "properties": {
+                "contract": {
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "tokenId": {
                     "type": "string"
                 }
             }
@@ -1314,6 +1409,12 @@ const docTemplate = `{
                 "actualGasUsed": {
                     "type": "string"
                 },
+                "assetMovements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement"
+                    }
+                },
                 "beneficiary": {
                     "type": "string"
                 },
@@ -1346,6 +1447,12 @@ const docTemplate = `{
                 },
                 "maxPriorityFeePerGas": {
                     "type": "string"
+                },
+                "mintedNfts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem"
+                    }
                 },
                 "nonce": {
                     "type": "string"

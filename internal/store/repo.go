@@ -386,6 +386,49 @@ func (r *Repository) UpsertSponsorship(ctx context.Context, s *Sponsorship) erro
 	}).Create(s).Error
 }
 
+func (r *Repository) UpsertNFTToken(ctx context.Context, token *NFTToken) error {
+	token.Contract = strings.ToLower(token.Contract)
+	token.Owner = strings.ToLower(token.Owner)
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "chain_id"}, {Name: "contract"}, {Name: "token_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"owner":      token.Owner,
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		}),
+	}).Create(token).Error
+}
+
+func (r *Repository) ListNFTTokensByOwner(ctx context.Context, chainID uint64, contract string, owner string) ([]NFTToken, error) {
+	query := r.db.WithContext(ctx).Where("chain_id = ?", chainID)
+	if contract != "" {
+		query = query.Where("contract = ?", normalizeAddr(contract))
+	}
+	if owner != "" {
+		query = query.Where("owner = ?", normalizeAddr(owner))
+	}
+	var tokens []NFTToken
+	if err := query.Order("token_id ASC").Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+	return tokens, nil
+}
+
+func (r *Repository) ListNFTMintsByTx(ctx context.Context, chainID uint64, mintTxHash string) ([]NFTToken, error) {
+	hash := strings.ToLower(strings.TrimSpace(mintTxHash))
+	if hash == "" {
+		return []NFTToken{}, nil
+	}
+	var tokens []NFTToken
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND mint_tx_hash = ?", chainID, hash).
+		Order("token_id ASC").
+		Find(&tokens).Error
+	if err != nil {
+		return nil, err
+	}
+	return tokens, nil
+}
+
 func (r *Repository) ListOperations(ctx context.Context, paymasterID uint) ([]Operation, error) {
 	var ops []Operation
 	err := r.db.WithContext(ctx).Where("paymaster_id = ?", paymasterID).Order("created_at desc").Find(&ops).Error

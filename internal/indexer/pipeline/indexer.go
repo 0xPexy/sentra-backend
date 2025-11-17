@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -26,13 +28,14 @@ type Indexer struct {
 }
 
 var errTraceUnsupported = errors.New("trace unsupported")
+var transferEventTopic = crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
 
 func New(cfg Config, repo Repo, client EthClient, logger *log.Logger) *Indexer {
 	if logger == nil {
 		logger = log.Default()
 	}
 	d := newDecoder(cfg, client, logger)
-	sub := newLogSubscriber(cfg, repo, client, d.topicsList(), logger)
+	sub := newLogSubscriber(cfg, repo, client, cfg.EntryPoint, d.topicsList(), logger)
 	return &Indexer{
 		cfg:        cfg,
 		repo:       repo,
@@ -80,6 +83,18 @@ func (i *Indexer) Run(ctx context.Context) error {
 	for n := 0; n < i.cfg.writeWorkerCount(); n++ {
 		g.Go(func() error {
 			return i.runWriteWorker(ctx, writeCh)
+		})
+	}
+
+	if (i.cfg.ERC721 != common.Address{}) {
+		nftCh := make(chan types.Log, 64)
+		nftSub := newLogSubscriber(i.cfg, i.repo, i.client, i.cfg.ERC721, []common.Hash{transferEventTopic}, i.logger)
+		g.Go(func() error {
+			defer close(nftCh)
+			return nftSub.stream(ctx, nftCh)
+		})
+		g.Go(func() error {
+			return i.runNFTWorker(ctx, nftCh)
 		})
 	}
 
@@ -342,6 +357,43 @@ func (i *Indexer) fetchAndStoreTrace(ctx context.Context, ev *store.UserOperatio
 	}
 	i.logf("trace stored: hash=%s phases=%d", ev.UserOpHash, len(summary.Phases))
 	return nil
+}
+
+func (i *Indexer) runNFTWorker(ctx context.Context, in <-chan types.Log) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case lg, ok := <-in:
+			if !ok {
+				return nil
+			}
+			if err := i.handleNFTTransfer(ctx, lg); err != nil {
+				i.logf("nft handler error: %v", err)
+			}
+		}
+	}
+}
+
+func (i *Indexer) handleNFTTransfer(ctx context.Context, lg types.Log) error {
+	if len(lg.Topics) < 4 {
+		return nil
+	}
+	from := common.BytesToAddress(lg.Topics[1].Bytes())
+	to := common.BytesToAddress(lg.Topics[2].Bytes())
+	tokenID := new(big.Int).SetBytes(lg.Topics[3].Bytes()).String()
+
+	token := &store.NFTToken{
+		ChainID:  i.cfg.ChainID,
+		Contract: strings.ToLower(lg.Address.Hex()),
+		TokenID:  tokenID,
+		Owner:    strings.ToLower(to.Hex()),
+	}
+	if from == (common.Address{}) {
+		token.MintTxHash = strings.ToLower(lg.TxHash.Hex())
+		token.MintBlockNumber = lg.BlockNumber
+	}
+	return i.repo.UpsertNFTToken(ctx, token)
 }
 
 type writeRequest struct {

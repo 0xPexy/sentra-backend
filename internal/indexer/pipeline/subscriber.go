@@ -15,26 +15,28 @@ import (
 )
 
 type logSubscriber struct {
-	cfg    Config
-	repo   Repo
-	client EthClient
-	topics []common.Hash
-	logger *log.Logger
+	cfg     Config
+	repo    Repo
+	client  EthClient
+	topics  []common.Hash
+	address common.Address
+	logger  *log.Logger
 }
 
-func newLogSubscriber(cfg Config, repo Repo, client EthClient, topics []common.Hash, logger *log.Logger) *logSubscriber {
+func newLogSubscriber(cfg Config, repo Repo, client EthClient, address common.Address, topics []common.Hash, logger *log.Logger) *logSubscriber {
 	return &logSubscriber{
-		cfg:    cfg,
-		repo:   repo,
-		client: client,
-		topics: topics,
-		logger: logger,
+		cfg:     cfg,
+		repo:    repo,
+		client:  client,
+		topics:  topics,
+		address: address,
+		logger:  logger,
 	}
 }
 
 func (s *logSubscriber) stream(ctx context.Context, out chan<- types.Log) error {
-	entryPointAddr := s.cfg.EntryPoint.Hex()
-	cursor, err := s.repo.GetLogCursor(ctx, s.cfg.ChainID, entryPointAddr)
+	targetAddr := strings.ToLower(s.address.Hex())
+	cursor, err := s.repo.GetLogCursor(ctx, s.cfg.ChainID, targetAddr)
 	if err != nil {
 		return err
 	}
@@ -114,6 +116,9 @@ func (s *logSubscriber) stream(ctx context.Context, out chan<- types.Log) error 
 				ToBlock:   new(big.Int).SetUint64(to),
 				Topics:    [][]common.Hash{s.topics},
 			}
+			if s.address != (common.Address{}) {
+				query.Addresses = []common.Address{s.address}
+			}
 			topicStrs := make([]string, len(s.topics))
 			for i, t := range s.topics {
 				topicStrs[i] = t.Hex()
@@ -163,7 +168,7 @@ func (s *logSubscriber) stream(ctx context.Context, out chan<- types.Log) error 
 
 			if err := s.repo.UpsertLogCursor(ctx, &store.LogCursor{
 				ChainID:      s.cfg.ChainID,
-				Address:      entryPointAddr,
+				Address:      targetAddr,
 				LastBlock:    max64(lastProcessed, to),
 				LastTxHash:   lastTxHash,
 				LastLogIndex: lastLogIndex,

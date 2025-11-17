@@ -151,6 +151,13 @@ type GasBreakdown struct {
 	GasUsed string `json:"gasUsed"`
 }
 
+type AssetMovement struct {
+	Asset  string `json:"asset"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Amount string `json:"amount"`
+}
+
 type PhaseGas struct {
 	Phase    string `json:"phase"`
 	GasUsed  string `json:"gasUsed"`
@@ -179,6 +186,22 @@ type ListUserOpsResult struct {
 	Total    int64               `json:"total"`
 	HasNext  bool                `json:"hasNext"`
 	NextPage int                 `json:"nextPage,omitempty"`
+}
+
+type NFTTokenItem struct {
+	TokenID  string `json:"tokenId"`
+	Contract string `json:"contract"`
+	Owner    string `json:"owner"`
+}
+
+type NFTListResult struct {
+	Items []NFTTokenItem `json:"items"`
+}
+
+type ListNFTsParams struct {
+	ChainID  uint64
+	Contract string
+	Owner    string
 }
 
 func (r *Reader) ListUserOperations(ctx context.Context, params ListUserOpsParams) (*ListUserOpsResult, error) {
@@ -256,6 +279,8 @@ type UserOperationDetail struct {
 	Revert       *RevertInfo       `json:"revert,omitempty"`
 	Sponsorship  *SponsorshipInfo  `json:"sponsorship,omitempty"`
 	GasBreakdown []GasBreakdown    `json:"gasBreakdown,omitempty"`
+	AssetMoves   []AssetMovement   `json:"assetMovements,omitempty"`
+	MintedNFTs   []NFTTokenItem    `json:"mintedNfts,omitempty"`
 }
 
 type UserOpEventInfo struct {
@@ -390,6 +415,33 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		}
 	}
 
+	var assetMoves []AssetMovement
+	if strings.TrimSpace(row.ActualGasCost) != "" && row.ActualGasCost != "0" && row.Beneficiary != "" {
+		from := row.Paymaster
+		if from == "" {
+			from = row.Sender
+		}
+		assetMoves = append(assetMoves, AssetMovement{
+			Asset:  "ETH",
+			From:   strings.ToLower(from),
+			To:     strings.ToLower(row.Beneficiary),
+			Amount: row.ActualGasCost,
+		})
+	}
+
+	var mintedNFTs []NFTTokenItem
+	if tokens, err := r.repo.ListNFTMintsByTx(ctx, row.ChainID, row.TxHash); err == nil {
+		for _, token := range tokens {
+			mintedNFTs = append(mintedNFTs, NFTTokenItem{
+				TokenID:  token.TokenID,
+				Contract: token.Contract,
+				Owner:    token.Owner,
+			})
+		}
+	} else {
+		return nil, err
+	}
+
 	return &UserOperationDetail{
 		UserOperationItem: item,
 		Nonce:             row.Nonce,
@@ -397,6 +449,8 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 		Revert:            revertInfo,
 		Sponsorship:       sponsorship,
 		GasBreakdown:      gasBreakdown,
+		AssetMoves:        assetMoves,
+		MintedNFTs:        mintedNFTs,
 	}, nil
 }
 
@@ -534,6 +588,25 @@ func parseBigIntString(v string) *big.Int {
 		return num
 	}
 	return nil
+}
+
+func (r *Reader) ListNFTs(ctx context.Context, params ListNFTsParams) (*NFTListResult, error) {
+	if params.ChainID == 0 {
+		return &NFTListResult{Items: []NFTTokenItem{}}, nil
+	}
+	tokens, err := r.repo.ListNFTTokensByOwner(ctx, params.ChainID, params.Contract, params.Owner)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]NFTTokenItem, 0, len(tokens))
+	for _, token := range tokens {
+		items = append(items, NFTTokenItem{
+			TokenID:  token.TokenID,
+			Contract: token.Contract,
+			Owner:    token.Owner,
+		})
+	}
+	return &NFTListResult{Items: items}, nil
 }
 
 type PaymasterOpsParams struct {

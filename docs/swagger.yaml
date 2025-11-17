@@ -5,6 +5,17 @@ definitions:
       error:
         type: string
     type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement:
+    properties:
+      amount:
+        type: string
+      asset:
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown:
     properties:
       from:
@@ -20,6 +31,22 @@ definitions:
       to:
         type: string
       type:
+        type: string
+    type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.NFTListResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem'
+        type: array
+    type: object
+  github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem:
+    properties:
+      contract:
+        type: string
+      owner:
+        type: string
+      tokenId:
         type: string
     type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.PaymasterOverview:
@@ -101,6 +128,10 @@ definitions:
         type: string
       actualGasUsed:
         type: string
+      assetMovements:
+        items:
+          $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement'
+        type: array
       beneficiary:
         type: string
       blockNumber:
@@ -123,6 +154,10 @@ definitions:
         type: string
       maxPriorityFeePerGas:
         type: string
+      mintedNfts:
+        items:
+          $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTTokenItem'
+        type: array
       nonce:
         type: string
       paymaster:
@@ -589,6 +624,41 @@ paths:
       summary: Get current admin profile
       tags:
       - Admin
+  /api/v1/nfts/{address}:
+    get:
+      parameters:
+      - description: Owner address
+        in: path
+        name: address
+        required: true
+        type: string
+      - description: Chain ID override
+        format: int64
+        in: query
+        name: chain_id
+        type: integer
+      - description: ERC721 contract address override
+        in: query
+        name: contract
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.NFTListResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_server.ErrorResponse'
+      summary: List NFTs owned by address
+      tags:
+      - Playground
   /api/v1/ops/{userOpHash}:
     get:
       parameters:

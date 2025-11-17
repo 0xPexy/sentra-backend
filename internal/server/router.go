@@ -31,6 +31,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	idxH := newIndexerHandler(cfg, repo, reader, hub)
 	playgroundH := newPlaygroundHandler(cfg)
 	bundlerH := newBundlerHandler(cfg)
+	nftH := newNFTHandler(cfg, reader)
 	r.Static("/static", "./static")
 
 	api := r.Group("/api/v1")
@@ -41,6 +42,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	}
 	api.GET("/playground/nft", playgroundH.NFTMetadata)
 	api.POST("/bundler", bundlerH.Proxy)
+	api.GET("/nfts/:address", nftH.ListAccountNFTs)
 
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)

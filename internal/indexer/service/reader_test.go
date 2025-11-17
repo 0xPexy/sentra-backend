@@ -53,6 +53,7 @@ func TestReaderQueries(t *testing.T) {
 			Success:       false,
 			ActualGasCost: "2000",
 			ActualGasUsed: "800",
+			Beneficiary:   "0xbeneficiary",
 			TxHash:        "0xtx2",
 			BlockNumber:   101,
 			LogIndex:      0,
@@ -107,6 +108,18 @@ func TestReaderQueries(t *testing.T) {
 		t.Fatalf("seed cursor: %v", err)
 	}
 
+	nft := store.NFTToken{
+		ChainID:         chainID,
+		Contract:        "0xnft",
+		TokenID:         "1",
+		Owner:           "0x1cd8e4cc72abb54bb073fa919e60d7b9c9b3ba35",
+		MintTxHash:      events[1].TxHash,
+		MintBlockNumber: 101,
+	}
+	if err := repo.UpsertNFTToken(ctx, &nft); err != nil {
+		t.Fatalf("seed nft: %v", err)
+	}
+
 	status, err := reader.Status(ctx, chainID)
 	if err != nil {
 		t.Fatalf("status err: %v", err)
@@ -129,6 +142,12 @@ func TestReaderQueries(t *testing.T) {
 	}
 	if detail == nil || detail.Revert == nil || detail.Revert.Message == "" {
 		t.Fatalf("expected revert info")
+	}
+	if len(detail.AssetMoves) == 0 {
+		t.Fatalf("expected asset movements")
+	}
+	if len(detail.MintedNFTs) != 1 {
+		t.Fatalf("expected minted nft")
 	}
 
 	pmRes, err := reader.ListPaymasterOperations(ctx, PaymasterOpsParams{
@@ -242,5 +261,49 @@ func TestReaderGetUserOperationGas(t *testing.T) {
 	}
 	if resp.CallGasLimit != "10000" || resp.ActualGasUsed != "500" {
 		t.Fatalf("unexpected limits or usage")
+	}
+}
+
+func TestReaderListNFTs(t *testing.T) {
+	ctx := context.Background()
+	gormDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db := &store.DB{DB: gormDB}
+	store.AutoMigrate(db)
+
+	repo := store.NewRepository(db)
+	reader := NewReader(repo)
+
+	chainID := uint64(8453)
+	contract := "0xnft"
+	owner := "0xowner"
+
+	token := store.NFTToken{
+		ChainID:         chainID,
+		Contract:        contract,
+		TokenID:         "1",
+		Owner:           owner,
+		MintTxHash:      "0xtx",
+		MintBlockNumber: 123,
+	}
+	if err := repo.UpsertNFTToken(ctx, &token); err != nil {
+		t.Fatalf("seed nft: %v", err)
+	}
+
+	result, err := reader.ListNFTs(ctx, ListNFTsParams{
+		ChainID:  chainID,
+		Contract: contract,
+		Owner:    owner,
+	})
+	if err != nil {
+		t.Fatalf("ListNFTs err: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected 1 nft, got %d", len(result.Items))
+	}
+	if result.Items[0].TokenID != "1" {
+		t.Fatalf("unexpected token id: %s", result.Items[0].TokenID)
 	}
 }

@@ -18,6 +18,7 @@ func AutoMigrate(db *DB) {
 		&SimpleAccountInitialization{},
 		&Sponsorship{},
 		&IndexerMetric{},
+		&NFTToken{},
 	); err != nil {
 		log.Fatalf("auto migrate: %v", err)
 	}

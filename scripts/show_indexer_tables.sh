@@ -115,5 +115,8 @@ run_query "sponsorships" \
 run_query "user_operation_traces" \
 	"SELECT * FROM user_operation_traces ORDER BY id DESC"
 
+run_query "nft_tokens" \
+	"SELECT * FROM nft_tokens ORDER BY contract, token_id"
+
 run_query "log_cursors" \
 	"SELECT * FROM log_cursors ORDER BY chain_id, address"

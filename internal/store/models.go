@@ -182,3 +182,15 @@ type IndexerMetric struct {
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
+
+type NFTToken struct {
+	ID              uint   `gorm:"primaryKey"`
+	ChainID         uint64 `gorm:"uniqueIndex:idx_nft_token"`
+	Contract        string `gorm:"size:66;uniqueIndex:idx_nft_token"`
+	TokenID         string `gorm:"size:78;uniqueIndex:idx_nft_token"`
+	Owner           string `gorm:"size:66;index"`
+	MintTxHash      string `gorm:"size:66"`
+	MintBlockNumber uint64
+	CreatedAt       time.Time `gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime"`
+}

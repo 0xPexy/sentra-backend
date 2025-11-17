@@ -9,6 +9,7 @@ import (
 type Config struct {
 	ChainID                 uint64
 	EntryPoint              common.Address
+	ERC721                  common.Address
 	Paymaster               *common.Address
 	DeploymentBlock         uint64
 	ChunkSize               uint64

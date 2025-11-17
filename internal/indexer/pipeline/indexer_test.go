@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -515,6 +516,7 @@ type mockRepo struct {
 	deploys  map[string]*store.AccountDeployment
 	inits    map[string]*store.SimpleAccountInitialization
 	sponsors map[string]*store.Sponsorship
+	nfts     map[string]*store.NFTToken
 }
 
 func newMockRepo() *mockRepo {
@@ -526,11 +528,12 @@ func newMockRepo() *mockRepo {
 		deploys:  make(map[string]*store.AccountDeployment),
 		inits:    make(map[string]*store.SimpleAccountInitialization),
 		sponsors: make(map[string]*store.Sponsorship),
+		nfts:     make(map[string]*store.NFTToken),
 	}
 }
 
 func (m *mockRepo) cursorKey(chainID uint64, address string) string {
-	return strconv.FormatUint(chainID, 10) + "|" + address
+	return strconv.FormatUint(chainID, 10) + "|" + strings.ToLower(address)
 }
 
 func (m *mockRepo) GetLogCursor(ctx context.Context, chainID uint64, address string) (*store.LogCursor, error) {
@@ -598,6 +601,15 @@ func (m *mockRepo) UpsertSponsorship(ctx context.Context, s *store.Sponsorship) 
 	defer m.mu.Unlock()
 	cloned := *s
 	m.sponsors[s.UserOpHash] = &cloned
+	return nil
+}
+
+func (m *mockRepo) UpsertNFTToken(ctx context.Context, token *store.NFTToken) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cloned := *token
+	key := fmt.Sprintf("%d|%s|%s", token.ChainID, strings.ToLower(token.Contract), token.TokenID)
+	m.nfts[key] = &cloned
 	return nil
 }
 
