@@ -1,13 +1,15 @@
 package config
 
+import "strings"
+
 type AdminConfig struct {
-	Username string
-	Password string
+	Address string
 }
 
 func loadAdmin() AdminConfig {
-	return AdminConfig{
-		Username: getenv("ADMIN_USERNAME", "admin"),
-		Password: getenv("ADMIN_PASSWORD", "admin123"),
+	addr := strings.TrimSpace(strings.ToLower(getenv("ADMIN_ADDRESS", "")))
+	if addr != "" && !strings.HasPrefix(addr, "0x") {
+		addr = "0x" + addr
 	}
+	return AdminConfig{Address: addr}
 }

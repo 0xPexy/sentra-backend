@@ -152,10 +152,10 @@ type GasBreakdown struct {
 }
 
 type AssetMovement struct {
-	Asset  string `json:"asset"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Amount string `json:"amount"`
+	Address string `json:"address"`
+	Token   string `json:"token"`
+	TokenID string `json:"tokenId,omitempty"`
+	Delta   string `json:"delta"`
 }
 
 type PhaseGas struct {
@@ -416,17 +416,24 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 	}
 
 	var assetMoves []AssetMovement
-	if strings.TrimSpace(row.ActualGasCost) != "" && row.ActualGasCost != "0" && row.Beneficiary != "" {
-		from := row.Paymaster
-		if from == "" {
-			from = row.Sender
+	cost := strings.TrimSpace(row.ActualGasCost)
+	if cost != "" && cost != "0" {
+		beneficiary := strings.ToLower(row.Beneficiary)
+		if beneficiary != "" {
+			assetMoves = append(assetMoves, AssetMovement{
+				Address: beneficiary,
+				Token:   "ETH",
+				Delta:   "+" + cost,
+			})
 		}
-		assetMoves = append(assetMoves, AssetMovement{
-			Asset:  "ETH",
-			From:   strings.ToLower(from),
-			To:     strings.ToLower(row.Beneficiary),
-			Amount: row.ActualGasCost,
-		})
+		entryPoint := strings.ToLower(row.EntryPoint)
+		if entryPoint != "" {
+			assetMoves = append(assetMoves, AssetMovement{
+				Address: entryPoint,
+				Token:   "ETH",
+				Delta:   "-" + cost,
+			})
+		}
 	}
 
 	var mintedNFTs []NFTTokenItem
@@ -436,6 +443,12 @@ func (r *Reader) GetUserOperation(ctx context.Context, chainID uint64, userOpHas
 				TokenID:  token.TokenID,
 				Contract: token.Contract,
 				Owner:    token.Owner,
+			})
+			assetMoves = append(assetMoves, AssetMovement{
+				Address: strings.ToLower(token.Owner),
+				Token:   strings.ToLower(token.Contract),
+				TokenID: token.TokenID,
+				Delta:   "+1",
 			})
 		}
 	} else {

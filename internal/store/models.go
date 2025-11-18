@@ -4,8 +4,7 @@ import "time"
 
 type Admin struct {
 	ID        uint      `gorm:"primaryKey"`
-	Username  string    `gorm:"uniqueIndex;size:120;not null"`
-	PassHash  string    `gorm:"not null"`
+	Address   string    `gorm:"size:66;uniqueIndex"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

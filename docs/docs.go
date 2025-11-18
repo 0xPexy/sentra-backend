@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/addresses": {
             "get": {
-                "description": "Returns the configured address for supported contracts: entrypoint, simple_account_factory, paymaster, erc721.",
+                "description": "Returns the configured address for supported contracts: entrypoint, simple_account_factory, erc721.",
                 "produces": [
                     "application/json"
                 ],
@@ -32,7 +32,6 @@ const docTemplate = `{
                             "entry_point",
                             "simple_account_factory",
                             "factory",
-                            "paymaster",
                             "erc721",
                             "nft",
                             "playground_nft"
@@ -216,7 +215,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns the authenticated admin's identifier and username.",
+                "description": "Returns the authenticated admin's identifier and wallet address.",
                 "produces": [
                     "application/json"
                 ],
@@ -1165,7 +1164,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Authenticates an admin and returns a JWT access token.",
+                "description": "Authenticates an admin via SIWE and returns a JWT access token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1208,6 +1207,32 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/auth/nonce": {
+            "get": {
+                "description": "Returns a short-lived nonce for SIWE authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Issue SIWE nonce",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_admin.NonceResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_admin.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1222,16 +1247,16 @@ const docTemplate = `{
         "github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement": {
             "type": "object",
             "properties": {
-                "amount": {
+                "address": {
                     "type": "string"
                 },
-                "asset": {
+                "delta": {
                     "type": "string"
                 },
-                "from": {
+                "token": {
                     "type": "string"
                 },
-                "to": {
+                "tokenId": {
                     "type": "string"
                 }
             }
@@ -1675,14 +1700,14 @@ const docTemplate = `{
         "internal_admin.LoginRequest": {
             "type": "object",
             "required": [
-                "password",
-                "username"
+                "message",
+                "signature"
             ],
             "properties": {
-                "password": {
+                "message": {
                     "type": "string"
                 },
-                "username": {
+                "signature": {
                     "type": "string"
                 }
             }
@@ -1698,10 +1723,18 @@ const docTemplate = `{
         "internal_admin.MeResponse": {
             "type": "object",
             "properties": {
+                "address": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
-                },
-                "username": {
+                }
+            }
+        },
+        "internal_admin.NonceResponse": {
+            "type": "object",
+            "properties": {
+                "nonce": {
                     "type": "string"
                 }
             }

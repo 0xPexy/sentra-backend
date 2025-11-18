@@ -26,10 +26,10 @@ func newAddressHandler(cfg config.Config) *addressHandler {
 
 // LookupAddress godoc
 // @Summary Lookup configured contract address
-// @Description Returns the configured address for supported contracts: entrypoint, simple_account_factory, paymaster, erc721.
+// @Description Returns the configured address for supported contracts: entrypoint, simple_account_factory, erc721.
 // @Tags Addresses
 // @Produce json
-// @Param contract query string true "Contract identifier" Enums(entrypoint,entry_point,simple_account_factory,factory,paymaster,erc721,nft,playground_nft)
+// @Param contract query string true "Contract identifier" Enums(entrypoint,entry_point,simple_account_factory,factory,erc721,nft,playground_nft)
 // @Success 200 {object} AddressLookupResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -49,12 +49,6 @@ func (h *addressHandler) LookupAddress(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, AddressLookupResponse{Address: h.cfg.Chain.SimpleAccountFactory})
-	case "paymaster":
-		if h.cfg.Paymaster.Address == "" {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "paymaster address not configured"})
-			return
-		}
-		c.JSON(http.StatusOK, AddressLookupResponse{Address: h.cfg.Paymaster.Address})
 	case "erc721", "nft", "playground_nft":
 		if h.cfg.Chain.ERC721Address == "" {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "erc721 address not configured"})

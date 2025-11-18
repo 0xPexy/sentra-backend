@@ -17,7 +17,7 @@ func JWTMiddleware(svc *Service) gin.HandlerFunc {
 		token := strings.TrimSpace(authz[7:])
 		if svc.IsDevToken(token) {
 			c.Set("adminID", svc.DevAdminID())
-			c.Set("adminUsername", "dev-token")
+			c.Set("adminAddress", svc.DevAdminAddress())
 			c.Next()
 			return
 		}
@@ -28,7 +28,7 @@ func JWTMiddleware(svc *Service) gin.HandlerFunc {
 			return
 		}
 		c.Set("adminID", claims.AdminID)
-		c.Set("adminUsername", claims.Username)
+		c.Set("adminAddress", claims.Address)
 		c.Next()
 	}
 }

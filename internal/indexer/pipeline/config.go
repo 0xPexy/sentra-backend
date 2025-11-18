@@ -7,19 +7,17 @@ import (
 )
 
 type Config struct {
-	ChainID                 uint64
-	EntryPoint              common.Address
-	ERC721                  common.Address
-	Paymaster               *common.Address
-	DeploymentBlock         uint64
-	ChunkSize               uint64
-	Confirmations           uint64
-	PollInterval            time.Duration
-	DecodeWorkerCount       int
-	WriteWorkerCount        int
-	ResubscribeDelay        time.Duration
-	MaxFilterRange          uint64
-	AllowNoPaymasterAddress bool
+	ChainID           uint64
+	EntryPoint        common.Address
+	ERC721            common.Address
+	DeploymentBlock   uint64
+	ChunkSize         uint64
+	Confirmations     uint64
+	PollInterval      time.Duration
+	DecodeWorkerCount int
+	WriteWorkerCount  int
+	ResubscribeDelay  time.Duration
+	MaxFilterRange    uint64
 }
 
 func (c Config) chunkSize() uint64 {

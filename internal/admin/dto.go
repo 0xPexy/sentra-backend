@@ -6,12 +6,16 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Message   string `json:"message" binding:"required"`
+	Signature string `json:"signature" binding:"required"`
 }
 
 type LoginResponse struct {
 	Token string `json:"token"`
+}
+
+type NonceResponse struct {
+	Nonce string `json:"nonce"`
 }
 
 type CreatePaymasterRequest struct {
@@ -58,8 +62,8 @@ type ErrorResponse struct {
 }
 
 type MeResponse struct {
-	ID       uint   `json:"id"`
-	Username string `json:"username"`
+	ID      uint   `json:"id"`
+	Address string `json:"address"`
 }
 
 type FunctionResponse struct {

@@ -114,14 +114,7 @@ func (r *Repository) ListSponsoredOps(ctx context.Context, params SponsoredOpsPa
 }
 
 func normalizeAddr(s string) string {
-	ss := strings.TrimSpace(s)
-	if ss == "" {
-		return ""
-	}
-	if !strings.HasPrefix(ss, "0x") {
-		ss = "0x" + ss
-	}
-	return strings.ToLower(ss)
+	return NormalizeAddress(s)
 }
 
 func (r *Repository) ListUserOpsMissingCallData(ctx context.Context, chainID uint64, limit int) ([]UserOperationEvent, error) {

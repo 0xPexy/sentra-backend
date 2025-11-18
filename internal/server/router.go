@@ -44,6 +44,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	api.POST("/bundler", bundlerH.Proxy)
 	api.GET("/nfts/:address", nftH.ListAccountNFTs)
 
+	r.GET("/auth/nonce", adminH.Nonce)
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)
 	ad := api.Group("", guard)

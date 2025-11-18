@@ -435,9 +435,13 @@ func (r *Repository) ListOperations(ctx context.Context, paymasterID uint) ([]Op
 	return ops, err
 }
 
-func (r *Repository) GetAdminByUsername(ctx context.Context, username string) (*Admin, error) {
+func (r *Repository) GetAdminByAddress(ctx context.Context, address string) (*Admin, error) {
+	addr := NormalizeAddress(address)
+	if addr == "" {
+		return nil, ErrNotFound
+	}
 	var admin Admin
-	err := r.db.WithContext(ctx).Where("username = ?", username).First(&admin).Error
+	err := r.db.WithContext(ctx).Where("address = ?", addr).First(&admin).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound

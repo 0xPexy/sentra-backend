@@ -143,8 +143,8 @@ func TestReaderQueries(t *testing.T) {
 	if detail == nil || detail.Revert == nil || detail.Revert.Message == "" {
 		t.Fatalf("expected revert info")
 	}
-	if len(detail.AssetMoves) == 0 {
-		t.Fatalf("expected asset movements")
+	if len(detail.AssetMoves) != 3 {
+		t.Fatalf("expected 3 asset movements, got %d", len(detail.AssetMoves))
 	}
 	if len(detail.MintedNFTs) != 1 {
 		t.Fatalf("expected minted nft")

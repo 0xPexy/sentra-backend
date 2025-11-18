@@ -32,9 +32,26 @@ func NewHandler(a *auth.Service, r *store.Repository, c config.Config) *Handler 
 	return &Handler{auth: a, repo: r, cfg: c}
 }
 
+// Nonce godoc
+// @Summary Issue SIWE nonce
+// @Description Returns a short-lived nonce for SIWE authentication.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} admin.NonceResponse
+// @Failure 500 {object} admin.ErrorResponse
+// @Router /auth/nonce [get]
+func (h *Handler) Nonce(c *gin.Context) {
+	nonce, err := h.auth.IssueNonce()
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "failed to issue nonce")
+		return
+	}
+	c.JSON(http.StatusOK, NonceResponse{Nonce: nonce})
+}
+
 // Login godoc
 // @Summary Admin login
-// @Description Authenticates an admin and returns a JWT access token.
+// @Description Authenticates an admin via SIWE and returns a JWT access token.
 // @Tags Auth
 // @Accept json
 // @Produce json
@@ -49,7 +66,7 @@ func (h *Handler) Login(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	token, err := h.auth.Login(c.Request.Context(), req.Username, req.Password)
+	token, err := h.auth.LoginWithSIWE(c.Request.Context(), req.Message, req.Signature)
 	if err != nil {
 		writeError(c, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -59,7 +76,7 @@ func (h *Handler) Login(c *gin.Context) {
 
 // Me godoc
 // @Summary Get current admin profile
-// @Description Returns the authenticated admin's identifier and username.
+// @Description Returns the authenticated admin's identifier and wallet address.
 // @Tags Admin
 // @Security BearerAuth
 // @Produce json
@@ -68,8 +85,8 @@ func (h *Handler) Login(c *gin.Context) {
 // @Router /api/v1/me [get]
 func (h *Handler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, MeResponse{
-		ID:       c.GetUint("adminID"),
-		Username: c.GetString("adminUsername"),
+		ID:      c.GetUint("adminID"),
+		Address: c.GetString("adminAddress"),
 	})
 }
 
@@ -280,7 +297,7 @@ func (h *Handler) AddContract(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	addr := normalizeAddress(req.Address)
+	addr := store.NormalizeAddress(req.Address)
 	if addr == "" {
 		writeError(c, http.StatusBadRequest, "address is required")
 		return
@@ -389,7 +406,7 @@ func (h *Handler) UpdateContract(c *gin.Context) {
 		return
 	}
 	if req.Address != nil {
-		addr := normalizeAddress(*req.Address)
+		addr := store.NormalizeAddress(*req.Address)
 		if addr == "" {
 			writeError(c, http.StatusBadRequest, "address is required")
 			return
@@ -496,7 +513,7 @@ func (h *Handler) AddUser(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	addr := normalizeAddress(req.Address)
+	addr := store.NormalizeAddress(req.Address)
 	if addr == "" {
 		writeError(c, http.StatusBadRequest, "address is required")
 		return
@@ -544,7 +561,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	addr := normalizeAddress(c.Param("address"))
+	addr := store.NormalizeAddress(c.Param("address"))
 	if addr == "" {
 		writeError(c, http.StatusBadRequest, "address is required")
 		return
@@ -633,17 +650,6 @@ func writeError(c *gin.Context, status int, msg string) {
 	c.JSON(status, ErrorResponse{Error: msg})
 }
 
-func normalizeAddress(addr string) string {
-	s := strings.TrimSpace(strings.ToLower(addr))
-	if s == "" {
-		return ""
-	}
-	if !strings.HasPrefix(s, "0x") {
-		s = "0x" + s
-	}
-	return s
-}
-
 func (h *Handler) upsertUsers(c *gin.Context, paymasterID uint, usersInput *[]string) ([]store.UserWhitelist, error) {
 	if usersInput == nil {
 		list, err := h.repo.ListUsers(c.Request.Context(), paymasterID)
@@ -656,7 +662,7 @@ func (h *Handler) upsertUsers(c *gin.Context, paymasterID uint, usersInput *[]st
 	seen := make(map[string]struct{})
 	users := make([]store.UserWhitelist, 0, len(*usersInput))
 	for _, raw := range *usersInput {
-		addr := normalizeAddress(raw)
+		addr := store.NormalizeAddress(raw)
 		if addr == "" {
 			writeError(c, http.StatusBadRequest, "user address cannot be empty")
 			return nil, errors.New("empty user address")
@@ -879,7 +885,7 @@ func (h *Handler) fetchChainID(ctx context.Context) (uint64, error) {
 func usersToSlice(users []store.UserWhitelist) []string {
 	out := make([]string, 0, len(users))
 	for _, u := range users {
-		out = append(out, normalizeAddress(u.Sender))
+		out = append(out, store.NormalizeAddress(u.Sender))
 	}
 	return out
 }

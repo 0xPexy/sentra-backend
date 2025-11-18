@@ -7,13 +7,13 @@ definitions:
     type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.AssetMovement:
     properties:
-      amount:
+      address:
         type: string
-      asset:
+      delta:
         type: string
-      from:
+      token:
         type: string
-      to:
+      tokenId:
         type: string
     type: object
   github_com_0xPexy_sentra-backend_internal_indexer_service.GasBreakdown:
@@ -302,13 +302,13 @@ definitions:
     type: object
   internal_admin.LoginRequest:
     properties:
-      password:
+      message:
         type: string
-      username:
+      signature:
         type: string
     required:
-    - password
-    - username
+    - message
+    - signature
     type: object
   internal_admin.LoginResponse:
     properties:
@@ -317,9 +317,14 @@ definitions:
     type: object
   internal_admin.MeResponse:
     properties:
+      address:
+        type: string
       id:
         type: integer
-      username:
+    type: object
+  internal_admin.NonceResponse:
+    properties:
+      nonce:
         type: string
     type: object
   internal_admin.OperationResponse:
@@ -479,7 +484,7 @@ paths:
   /api/v1/addresses:
     get:
       description: 'Returns the configured address for supported contracts: entrypoint,
-        simple_account_factory, paymaster, erc721.'
+        simple_account_factory, erc721.'
       parameters:
       - description: Contract identifier
         enum:
@@ -487,7 +492,6 @@ paths:
         - entry_point
         - simple_account_factory
         - factory
-        - paymaster
         - erc721
         - nft
         - playground_nft
@@ -607,7 +611,7 @@ paths:
       - Events
   /api/v1/me:
     get:
-      description: Returns the authenticated admin's identifier and username.
+      description: Returns the authenticated admin's identifier and wallet address.
       produces:
       - application/json
       responses:
@@ -1211,7 +1215,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticates an admin and returns a JWT access token.
+      description: Authenticates an admin via SIWE and returns a JWT access token.
       parameters:
       - description: Login request
         in: body
@@ -1235,6 +1239,23 @@ paths:
           schema:
             $ref: '#/definitions/internal_admin.ErrorResponse'
       summary: Admin login
+      tags:
+      - Auth
+  /auth/nonce:
+    get:
+      description: Returns a short-lived nonce for SIWE authentication.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_admin.NonceResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_admin.ErrorResponse'
+      summary: Issue SIWE nonce
       tags:
       - Auth
 securityDefinitions:

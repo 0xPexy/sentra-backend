@@ -4,57 +4,125 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/0xPexy/sentra-backend/internal/config"
 	"github.com/0xPexy/sentra-backend/internal/store"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/spruceid/siwe-go"
 )
 
 const devAdminID uint = 10000
 
-type Service struct {
-	secret []byte
-	repo   *store.Repository
-	ttl    time.Duration
-	devTok string
-	devID  uint
+var ErrInvalidCredentials = errors.New("invalid credentials")
+
+type Claims struct {
+	AdminID uint
+	Address string
+	jwt.RegisteredClaims
 }
 
-func NewService(secret string, repo *store.Repository, ttl time.Duration, devToken string) *Service {
-	s := &Service{secret: []byte(secret), repo: repo, ttl: ttl, devTok: devToken}
-	if devToken != "" {
+type Service struct {
+	secret    []byte
+	repo      *store.Repository
+	ttl       time.Duration
+	devTok    string
+	devID     uint
+	nonces    *nonceStore
+	domain    string
+	uri       string
+	statement string
+	chainID   uint64
+	allowed   map[string]struct{}
+}
+
+func NewService(cfg config.AuthConfig, adminAddrs []string, repo *store.Repository) *Service {
+	s := &Service{
+		secret:    []byte(cfg.JWTSecret),
+		repo:      repo,
+		ttl:       cfg.JWTTTL,
+		devTok:    cfg.DevToken,
+		nonces:    newNonceStore(cfg.NonceTTL),
+		domain:    strings.TrimSpace(cfg.SIWEDomain),
+		uri:       strings.TrimSpace(cfg.SIWEURI),
+		statement: strings.TrimSpace(cfg.SIWEStatement),
+		chainID:   cfg.SIWEChainID,
+		allowed:   make(map[string]struct{}),
+	}
+	if cfg.DevToken != "" {
 		s.devID = devAdminID
+	}
+	for _, addr := range adminAddrs {
+		norm := store.NormalizeAddress(addr)
+		if norm == "" {
+			continue
+		}
+		s.allowed[norm] = struct{}{}
 	}
 	return s
 }
 
-var ErrInvalidCredentials = errors.New("invalid credentials")
-
-type Claims struct {
-	AdminID  uint
-	Username string
-	jwt.RegisteredClaims
+func (s *Service) IssueNonce() (string, error) {
+	return s.nonces.Issue()
 }
 
-func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
-	admin, err := s.repo.GetAdminByUsername(ctx, username)
+func (s *Service) LoginWithSIWE(ctx context.Context, message, signature string) (string, error) {
+	if strings.TrimSpace(message) == "" || strings.TrimSpace(signature) == "" {
+		return "", ErrInvalidCredentials
+	}
+	if len(s.allowed) == 0 {
+		return "", ErrInvalidCredentials
+	}
+
+	parsed, err := siwe.ParseMessage(message)
+	if err != nil {
+		return "", ErrInvalidCredentials
+	}
+	nonce := parsed.GetNonce()
+	if !s.nonces.Has(nonce) {
+		return "", ErrInvalidCredentials
+	}
+	var domain *string
+	if s.domain != "" {
+		d := s.domain
+		domain = &d
+	}
+	if s.uri != "" {
+		uri := parsed.GetURI()
+		if uri.String() != s.uri {
+			return "", ErrInvalidCredentials
+		}
+	}
+	if s.statement != "" {
+		if stmt := parsed.GetStatement(); stmt == nil || strings.TrimSpace(*stmt) != s.statement {
+			return "", ErrInvalidCredentials
+		}
+	}
+	if s.chainID > 0 && parsed.GetChainID() != int(s.chainID) {
+		return "", ErrInvalidCredentials
+	}
+	if _, err := parsed.Verify(signature, domain, &nonce, nil); err != nil {
+		return "", ErrInvalidCredentials
+	}
+	addr := store.NormalizeAddress(parsed.GetAddress().Hex())
+	if _, ok := s.allowed[addr]; !ok {
+		return "", ErrInvalidCredentials
+	}
+	admin, err := s.repo.GetAdminByAddress(ctx, addr)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return "", ErrInvalidCredentials
 		}
 		return "", err
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(admin.PassHash), []byte(password)); err != nil {
-		return "", ErrInvalidCredentials
-	}
-
+	s.nonces.Consume(nonce)
 	now := time.Now()
 	claims := Claims{
-		AdminID:  admin.ID,
-		Username: admin.Username,
+		AdminID: admin.ID,
+		Address: addr,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   username,
+			Subject:   addr,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.ttl)),
 		},
@@ -90,7 +158,9 @@ func (s *Service) DevAdminID() uint {
 	return s.devID
 }
 
-func DevAdminID() uint { return devAdminID }
+func (s *Service) DevAdminAddress() string {
+	return "dev-token"
+}
 
 func constantTimeEquals(a, b string) bool {
 	if len(a) != len(b) {

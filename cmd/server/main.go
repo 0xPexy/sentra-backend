@@ -66,16 +66,17 @@ func main() {
 
 	db := store.OpenSQLite(cfg.Database.SQLiteDSN)
 	store.AutoMigrate(db)
-	store.EnsureAdmin(db, cfg.Admin.Username, cfg.Admin.Password)
+	store.EnsureAdminAddress(db, cfg.Admin.Address)
 
 	repo := store.NewRepository(db)
 	eventHub := server.NewEventHub(log.New(log.Writer(), "events: ", log.LstdFlags))
 	playgroundHub := server.NewPlaygroundHub(log.New(log.Writer(), "playground: ", log.LstdFlags))
 	indexerReader := indexersvc.NewReader(repo)
-	authSvc := auth.NewService(cfg.Auth.JWTSecret, repo, cfg.Auth.JWTTTL, cfg.Auth.DevToken)
-	if cfg.Auth.DevToken != "" {
-		store.EnsureDevAdmin(db, auth.DevAdminID(), cfg.Auth.DevAdminUser)
+	adminAddrs := []string{}
+	if cfg.Admin.Address != "" {
+		adminAddrs = append(adminAddrs, cfg.Admin.Address)
 	}
+	authSvc := auth.NewService(cfg.Auth, adminAddrs, repo)
 	policy := erc7677.NewPolicy(repo, cfg)
 	rpcClient, err := rpc.Dial(cfg.Chain.RPCURL)
 	if err != nil {
@@ -99,11 +100,6 @@ func main() {
 	var sentraIndexer *pipeline.Indexer
 	if cfg.Indexer.Enabled {
 		entryPointAddr := common.HexToAddress(cfg.Chain.EntryPoint)
-		var paymasterAddrPtr *common.Address
-		if cfg.Paymaster.Address != "" {
-			addr := common.HexToAddress(cfg.Paymaster.Address)
-			paymasterAddrPtr = &addr
-		}
 		var nftAddr common.Address
 		if cfg.Chain.ERC721Address != "" {
 			nftAddr = common.HexToAddress(cfg.Chain.ERC721Address)
@@ -112,7 +108,6 @@ func main() {
 			ChainID:           chainID.Uint64(),
 			EntryPoint:        entryPointAddr,
 			ERC721:            nftAddr,
-			Paymaster:         paymasterAddrPtr,
 			DeploymentBlock:   cfg.Chain.EntryPointDeployBlock,
 			ChunkSize:         cfg.Indexer.ChunkSize,
 			Confirmations:     cfg.Indexer.Confirmations,

@@ -22,4 +22,19 @@ func AutoMigrate(db *DB) {
 	); err != nil {
 		log.Fatalf("auto migrate: %v", err)
 	}
+	migrateAdminSchema(db)
+}
+
+func migrateAdminSchema(db *DB) {
+	migrator := db.Migrator()
+	if migrator.HasColumn(&Admin{}, "username") && !migrator.HasColumn(&Admin{}, "address") {
+		if err := migrator.RenameColumn(&Admin{}, "username", "address"); err != nil {
+			log.Printf("warning: failed to rename admin.username to address: %v", err)
+		}
+	}
+	if migrator.HasColumn(&Admin{}, "pass_hash") {
+		if err := migrator.DropColumn(&Admin{}, "pass_hash"); err != nil {
+			log.Printf("warning: failed to drop admin.pass_hash: %v", err)
+		}
+	}
 }
