@@ -11,7 +11,7 @@ type Admin struct {
 
 type Paymaster struct {
 	ID          uint            `gorm:"primaryKey"`
-	AdminID     uint            `gorm:"uniqueIndex;not null"`
+	AdminID     uint            `gorm:"index"`
 	ChainID     uint64          `gorm:"index;not null"`
 	EntryPoint  string          `gorm:"size:66;not null"`
 	Address     string          `gorm:"size:66;not null"`

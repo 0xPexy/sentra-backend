@@ -1043,7 +1043,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/paymasters/{address}/ops": {
+        "/api/v1/paymasters/ops": {
             "get": {
                 "security": [
                     {
@@ -1058,13 +1058,6 @@ const docTemplate = `{
                 ],
                 "summary": "List sponsored user operations for a paymaster",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Paymaster address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    },
                     {
                         "type": "integer",
                         "format": "int64",
@@ -1128,11 +1121,6 @@ const docTemplate = `{
         },
         "/api/v1/stats/overview": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "produces": [
                     "application/json"
                 ],

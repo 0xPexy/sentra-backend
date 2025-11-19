@@ -70,13 +70,9 @@ func main() {
 
 	repo := store.NewRepository(db)
 	eventHub := server.NewEventHub(log.New(log.Writer(), "events: ", log.LstdFlags))
-	playgroundHub := server.NewPlaygroundHub(log.New(log.Writer(), "playground: ", log.LstdFlags))
+	playgroundHub := server.NewPlaygroundHub(repo, log.New(log.Writer(), "playground: ", log.LstdFlags))
 	indexerReader := indexersvc.NewReader(repo)
-	adminAddrs := []string{}
-	if cfg.Admin.Address != "" {
-		adminAddrs = append(adminAddrs, cfg.Admin.Address)
-	}
-	authSvc := auth.NewService(cfg.Auth, adminAddrs, repo)
+	authSvc := auth.NewService(cfg.Auth, repo)
 	policy := erc7677.NewPolicy(repo, cfg)
 	rpcClient, err := rpc.Dial(cfg.Chain.RPCURL)
 	if err != nil {

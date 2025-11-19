@@ -29,6 +29,7 @@ type playgroundClient struct {
 
 type PlaygroundHub struct {
 	*playgroundHub
+	repo *store.Repository
 }
 
 type playgroundEvent struct {
@@ -38,22 +39,39 @@ type playgroundEvent struct {
 	DetailURL  string `json:"detailUrl"`
 }
 
-func NewPlaygroundHub(logger *log.Logger) *PlaygroundHub {
-	return &PlaygroundHub{playgroundHub: &playgroundHub{
-		clients: make(map[*playgroundClient]struct{}),
-		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				return true
+func NewPlaygroundHub(repo *store.Repository, logger *log.Logger) *PlaygroundHub {
+	return &PlaygroundHub{
+		repo: repo,
+		playgroundHub: &playgroundHub{
+			clients: make(map[*playgroundClient]struct{}),
+			upgrader: websocket.Upgrader{
+				ReadBufferSize:  1024,
+				WriteBufferSize: 1024,
+				CheckOrigin: func(r *http.Request) bool {
+					return true
+				},
 			},
-		},
-		logger: logger,
-	}}
+			logger: logger,
+		}}
 }
 
 func (h *PlaygroundHub) PublishUserOperation(event *store.UserOperationEvent) {
 	if h == nil || event == nil {
+		return
+	}
+	targetPaymaster := ""
+	if h.repo != nil {
+		pm, err := h.repo.GetCurrentPaymaster(context.Background())
+		if err != nil {
+			h.logf("playground fetch paymaster: %v", err)
+			return
+		}
+		if pm == nil || strings.TrimSpace(pm.Address) == "" {
+			return
+		}
+		targetPaymaster = strings.ToLower(pm.Address)
+	}
+	if targetPaymaster != "" && strings.ToLower(event.Paymaster) != targetPaymaster {
 		return
 	}
 	status := "failed"

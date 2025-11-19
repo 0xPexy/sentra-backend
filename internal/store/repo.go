@@ -21,25 +21,19 @@ type Repository struct {
 func NewRepository(db *DB) *Repository { return &Repository{db: db.DB} }
 
 func (r *Repository) CreatePaymaster(ctx context.Context, pm *Paymaster) error {
-	if pm.AdminID != 0 {
-		var count int64
-		if err := r.db.WithContext(ctx).Model(&Paymaster{}).Where("admin_id = ?", pm.AdminID).Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
-			return ErrConflict
-		}
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&Paymaster{}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrConflict
 	}
 	return r.db.WithContext(ctx).Create(pm).Error
 }
 
-func (r *Repository) ListPaymasters(ctx context.Context, adminID uint) ([]Paymaster, error) {
+func (r *Repository) ListPaymasters(ctx context.Context) ([]Paymaster, error) {
 	var out []Paymaster
-	query := r.db.WithContext(ctx).Order("id desc").Preload("Users")
-	if adminID != 0 {
-		query = query.Where("admin_id = ?", adminID)
-	}
-	err := query.Find(&out).Error
+	err := r.db.WithContext(ctx).Order("id desc").Preload("Users").Find(&out).Error
 	return out, err
 }
 
@@ -55,12 +49,9 @@ func (r *Repository) GetPaymaster(ctx context.Context, id uint) (*Paymaster, err
 	return &pm, nil
 }
 
-func (r *Repository) GetPaymasterByAdmin(ctx context.Context, adminID uint) (*Paymaster, error) {
-	if adminID == 0 {
-		return nil, nil
-	}
+func (r *Repository) GetCurrentPaymaster(ctx context.Context) (*Paymaster, error) {
 	var pm Paymaster
-	err := r.db.WithContext(ctx).Preload("Users").Where("admin_id = ?", adminID).First(&pm).Error
+	err := r.db.WithContext(ctx).Preload("Users").Order("id asc").First(&pm).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

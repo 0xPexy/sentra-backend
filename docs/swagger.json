@@ -1036,7 +1036,7 @@
                 }
             }
         },
-        "/api/v1/paymasters/{address}/ops": {
+        "/api/v1/paymasters/ops": {
             "get": {
                 "security": [
                     {
@@ -1051,13 +1051,6 @@
                 ],
                 "summary": "List sponsored user operations for a paymaster",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Paymaster address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    },
                     {
                         "type": "integer",
                         "format": "int64",
@@ -1121,11 +1114,6 @@
         },
         "/api/v1/stats/overview": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "produces": [
                     "application/json"
                 ],

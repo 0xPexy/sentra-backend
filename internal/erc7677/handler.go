@@ -26,7 +26,7 @@ import (
 )
 
 type paymasterRepo interface {
-	GetPaymasterByAdmin(ctx context.Context, adminID uint) (*store.Paymaster, error)
+	GetCurrentPaymaster(ctx context.Context) (*store.Paymaster, error)
 	GetContractByAddress(ctx context.Context, paymasterID uint, address string) (*store.ContractWhitelist, error)
 }
 
@@ -315,8 +315,8 @@ func (h *Handler) computeValidity(ctx context.Context, validFor time.Duration) (
 
 func (h *Handler) wrapPolicyData(payload []byte) []byte {
 	out := make([]byte, 0, 32+len(payload))
-    out = appendUint128(out, h.cfg.Paymaster.ValidationGas)
-    out = appendUint128(out, h.cfg.Paymaster.PostOpGas)
+	out = appendUint128(out, h.cfg.Paymaster.ValidationGas)
+	out = appendUint128(out, h.cfg.Paymaster.PostOpGas)
 	out = append(out, payload...)
 	return out
 }
@@ -453,8 +453,8 @@ func (h *Handler) stub(c *gin.Context, req rpcRequest) {
 		Sponsor:                       &Sponsor{Name: "Sentra"},
 		Paymaster:                     pm.Address,
 		PaymasterData:                 hex0x(policyWithStubSig),
-        PaymasterVerificationGasLimit: hexUint(h.cfg.Paymaster.ValidationGas),
-        PaymasterPostOpGasLimit:       hexUint(h.cfg.Paymaster.PostOpGas),
+		PaymasterVerificationGasLimit: hexUint(h.cfg.Paymaster.ValidationGas),
+		PaymasterPostOpGasLimit:       hexUint(h.cfg.Paymaster.PostOpGas),
 		IsFinal:                       false,
 	}
 	c.JSON(http.StatusOK, rpcOK(req.ID, out))
@@ -522,8 +522,8 @@ func (h *Handler) data(c *gin.Context, req rpcRequest) {
 		Sponsor:                       &Sponsor{Name: "Sentra"},
 		Paymaster:                     pm.Address,
 		PaymasterData:                 hex0x(policyDataWithSig),
-        PaymasterVerificationGasLimit: hexUint(h.cfg.Paymaster.ValidationGas),
-        PaymasterPostOpGasLimit:       hexUint(h.cfg.Paymaster.PostOpGas),
+		PaymasterVerificationGasLimit: hexUint(h.cfg.Paymaster.ValidationGas),
+		PaymasterPostOpGasLimit:       hexUint(h.cfg.Paymaster.PostOpGas),
 	}
 	c.JSON(http.StatusOK, rpcOK(req.ID, out))
 }
@@ -533,7 +533,7 @@ func (h *Handler) resolvePaymaster(c *gin.Context) (*store.Paymaster, error) {
 	if adminID == 0 {
 		return nil, newRPCError(errInvalidRequest, "admin context required")
 	}
-	pm, err := h.repo.GetPaymasterByAdmin(c.Request.Context(), adminID)
+	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
 	if err != nil {
 		h.logf("load paymaster failed: adminID=%d err=%v", adminID, err)
 		return nil, newRPCError(-32000, "failed to load paymaster")

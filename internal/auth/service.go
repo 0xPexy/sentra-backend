@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"strings"
 	"time"
@@ -12,8 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spruceid/siwe-go"
 )
-
-const devAdminID uint = 10000
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
@@ -27,40 +24,24 @@ type Service struct {
 	secret    []byte
 	repo      *store.Repository
 	ttl       time.Duration
-	devTok    string
-	devID     uint
 	nonces    *nonceStore
 	domain    string
 	uri       string
 	statement string
 	chainID   uint64
-	allowed   map[string]struct{}
 }
 
-func NewService(cfg config.AuthConfig, adminAddrs []string, repo *store.Repository) *Service {
-	s := &Service{
+func NewService(cfg config.AuthConfig, repo *store.Repository) *Service {
+	return &Service{
 		secret:    []byte(cfg.JWTSecret),
 		repo:      repo,
 		ttl:       cfg.JWTTTL,
-		devTok:    cfg.DevToken,
 		nonces:    newNonceStore(cfg.NonceTTL),
 		domain:    strings.TrimSpace(cfg.SIWEDomain),
 		uri:       strings.TrimSpace(cfg.SIWEURI),
 		statement: strings.TrimSpace(cfg.SIWEStatement),
 		chainID:   cfg.SIWEChainID,
-		allowed:   make(map[string]struct{}),
 	}
-	if cfg.DevToken != "" {
-		s.devID = devAdminID
-	}
-	for _, addr := range adminAddrs {
-		norm := store.NormalizeAddress(addr)
-		if norm == "" {
-			continue
-		}
-		s.allowed[norm] = struct{}{}
-	}
-	return s
 }
 
 func (s *Service) IssueNonce() (string, error) {
@@ -69,9 +50,6 @@ func (s *Service) IssueNonce() (string, error) {
 
 func (s *Service) LoginWithSIWE(ctx context.Context, message, signature string) (string, error) {
 	if strings.TrimSpace(message) == "" || strings.TrimSpace(signature) == "" {
-		return "", ErrInvalidCredentials
-	}
-	if len(s.allowed) == 0 {
 		return "", ErrInvalidCredentials
 	}
 
@@ -106,20 +84,16 @@ func (s *Service) LoginWithSIWE(ctx context.Context, message, signature string) 
 		return "", ErrInvalidCredentials
 	}
 	addr := store.NormalizeAddress(parsed.GetAddress().Hex())
-	if _, ok := s.allowed[addr]; !ok {
-		return "", ErrInvalidCredentials
-	}
-	admin, err := s.repo.GetAdminByAddress(ctx, addr)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return "", ErrInvalidCredentials
-		}
+	var adminID uint
+	if admin, err := s.repo.GetAdminByAddress(ctx, addr); err == nil {
+		adminID = admin.ID
+	} else if !errors.Is(err, store.ErrNotFound) {
 		return "", err
 	}
 	s.nonces.Consume(nonce)
 	now := time.Now()
 	claims := Claims{
-		AdminID: admin.ID,
+		AdminID: adminID,
 		Address: addr,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   addr,
@@ -145,26 +119,4 @@ func (s *Service) Parse(tokenStr string) (*Claims, error) {
 		return claims, nil
 	}
 	return nil, ErrInvalidCredentials
-}
-
-func (s *Service) IsDevToken(tok string) bool {
-	if s.devTok == "" {
-		return false
-	}
-	return constantTimeEquals(s.devTok, tok)
-}
-
-func (s *Service) DevAdminID() uint {
-	return s.devID
-}
-
-func (s *Service) DevAdminAddress() string {
-	return "dev-token"
-}
-
-func constantTimeEquals(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

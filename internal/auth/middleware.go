@@ -15,13 +15,6 @@ func JWTMiddleware(svc *Service) gin.HandlerFunc {
 			return
 		}
 		token := strings.TrimSpace(authz[7:])
-		if svc.IsDevToken(token) {
-			c.Set("adminID", svc.DevAdminID())
-			c.Set("adminAddress", svc.DevAdminAddress())
-			c.Next()
-			return
-		}
-
 		claims, err := svc.Parse(token)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})

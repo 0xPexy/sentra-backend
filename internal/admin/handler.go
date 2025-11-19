@@ -115,6 +115,15 @@ func (h *Handler) CreatePaymaster(c *gin.Context) {
 		writeError(c, http.StatusForbidden, "admin context required")
 		return
 	}
+	existing, err := h.repo.GetCurrentPaymaster(c.Request.Context())
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing != nil {
+		writeError(c, http.StatusConflict, "paymaster already exists")
+		return
+	}
 	addr := strings.ToLower(strings.TrimSpace(req.Address))
 	if addr == "" {
 		writeError(c, http.StatusBadRequest, "address is required")
@@ -176,8 +185,7 @@ func (h *Handler) CreatePaymaster(c *gin.Context) {
 // @Failure 500 {object} admin.ErrorResponse
 // @Router /api/v1/paymasters [get]
 func (h *Handler) ListPaymasters(c *gin.Context) {
-	adminID := c.GetUint("adminID")
-	list, err := h.repo.ListPaymasters(c.Request.Context(), adminID)
+	list, err := h.repo.ListPaymasters(c.Request.Context())
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -199,8 +207,13 @@ func (h *Handler) ListPaymasters(c *gin.Context) {
 // @Failure 500 {object} admin.ErrorResponse
 // @Router /api/v1/paymasters/me [get]
 func (h *Handler) GetPaymaster(c *gin.Context) {
-	pm, ok := h.loadMyPaymaster(c)
-	if !ok {
+	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
+	if err != nil {
+		statusFromStoreError(c, err)
+		return
+	}
+	if pm == nil {
+		writeError(c, http.StatusNotFound, "paymaster not found")
 		return
 	}
 	contracts, err := h.repo.ListContracts(c.Request.Context(), pm.ID)
@@ -245,6 +258,7 @@ func (h *Handler) UpdatePaymaster(c *gin.Context) {
 	if !ok {
 		return
 	}
+	pm.AdminID = c.GetUint("adminID")
 	if req.Address != nil {
 		addr := strings.ToLower(strings.TrimSpace(*req.Address))
 		if addr == "" {
@@ -812,7 +826,7 @@ func (h *Handler) loadMyPaymaster(c *gin.Context) (*store.Paymaster, bool) {
 		writeError(c, http.StatusForbidden, "admin context required")
 		return nil, false
 	}
-	pm, err := h.repo.GetPaymasterByAdmin(c.Request.Context(), adminID)
+	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
 	if err != nil {
 		statusFromStoreError(c, err)
 		return nil, false

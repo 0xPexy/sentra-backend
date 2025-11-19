@@ -34,7 +34,7 @@ type stubRepo struct {
 	contractErr error
 }
 
-func (s *stubRepo) GetPaymasterByAdmin(ctx context.Context, adminID uint) (*store.Paymaster, error) {
+func (s *stubRepo) GetCurrentPaymaster(ctx context.Context) (*store.Paymaster, error) {
 	if s.pmErr != nil {
 		return nil, s.pmErr
 	}

@@ -31,19 +31,13 @@ func newIndexerHandler(cfg config.Config, repo *store.Repository, reader *indexe
 // StatsOverview godoc
 // @Summary Paymaster stats overview
 // @Tags Stats
-// @Security BearerAuth
 // @Produce json
 // @Success 200 {object} indexersvc.PaymasterOverview
 // @Failure 404 {object} admin.ErrorResponse
 // @Failure 500 {object} admin.ErrorResponse
 // @Router /api/v1/stats/overview [get]
 func (h *indexerHandler) StatsOverview(c *gin.Context) {
-	adminID := c.GetUint("adminID")
-	if adminID == 0 {
-		writeAPIError(c, http.StatusForbidden, "admin context required")
-		return
-	}
-	pm, err := h.repo.GetPaymasterByAdmin(c.Request.Context(), adminID)
+	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
 	if err != nil {
 		writeAPIError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -65,21 +59,27 @@ func (h *indexerHandler) StatsOverview(c *gin.Context) {
 // @Tags Operations
 // @Security BearerAuth
 // @Produce json
-// @Param address path string true "Paymaster address"
 // @Param chain_id query uint64 false "Chain ID override"
 // @Param limit query int false "Page size (1-100)"
 // @Param cursor query string false "Cursor in blockNumber:logIndex format"
 // @Success 200 {object} indexersvc.SponsoredOpsResult
 // @Failure 400 {object} admin.ErrorResponse
 // @Failure 500 {object} admin.ErrorResponse
-// @Router /api/v1/paymasters/{address}/ops [get]
+// @Router /api/v1/paymasters/ops [get]
 func (h *indexerHandler) SponsoredOps(c *gin.Context) {
-	address := strings.ToLower(strings.TrimSpace(c.Param("address")))
-	if address == "" {
-		writeAPIError(c, http.StatusBadRequest, "address is required")
+	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
+	if err != nil {
+		writeAPIError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	chainID := h.cfg.Chain.ChainID
+	if pm == nil || strings.TrimSpace(pm.Address) == "" {
+		writeAPIError(c, http.StatusNotFound, "paymaster not found")
+		return
+	}
+	chainID := pm.ChainID
+	if chainID == 0 {
+		chainID = h.cfg.Chain.ChainID
+	}
 	if raw := strings.TrimSpace(c.Query("chain_id")); raw != "" {
 		val, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil {
@@ -104,7 +104,7 @@ func (h *indexerHandler) SponsoredOps(c *gin.Context) {
 	cursor := strings.TrimSpace(c.Query("cursor"))
 	result, err := h.reader.SponsoredOps(c.Request.Context(), indexersvc.SponsoredOpsParams{
 		ChainID:   chainID,
-		Paymaster: address,
+		Paymaster: strings.ToLower(pm.Address),
 		Cursor:    cursor,
 		Limit:     limit,
 	})

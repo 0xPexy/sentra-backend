@@ -797,47 +797,6 @@ paths:
       summary: Create a new paymaster configuration
       tags:
       - Paymasters
-  /api/v1/paymasters/{address}/ops:
-    get:
-      parameters:
-      - description: Paymaster address
-        in: path
-        name: address
-        required: true
-        type: string
-      - description: Chain ID override
-        format: int64
-        in: query
-        name: chain_id
-        type: integer
-      - description: Page size (1-100)
-        in: query
-        name: limit
-        type: integer
-      - description: Cursor in blockNumber:logIndex format
-        in: query
-        name: cursor
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpsResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List sponsored user operations for a paymaster
-      tags:
-      - Operations
   /api/v1/paymasters/me:
     get:
       produces:
@@ -1177,6 +1136,42 @@ paths:
       summary: Remove a user from the paymaster whitelist
       tags:
       - Users
+  /api/v1/paymasters/ops:
+    get:
+      parameters:
+      - description: Chain ID override
+        format: int64
+        in: query
+        name: chain_id
+        type: integer
+      - description: Page size (1-100)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor in blockNumber:logIndex format
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_indexer_service.SponsoredOpsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List sponsored user operations for a paymaster
+      tags:
+      - Operations
   /api/v1/playground/nft:
     get:
       produces:
@@ -1206,8 +1201,6 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/github_com_0xPexy_sentra-backend_internal_admin.ErrorResponse'
-      security:
-      - BearerAuth: []
       summary: Paymaster stats overview
       tags:
       - Stats

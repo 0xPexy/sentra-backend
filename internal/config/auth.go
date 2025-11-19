@@ -5,7 +5,6 @@ import "time"
 type AuthConfig struct {
 	JWTSecret     string
 	JWTTTL        time.Duration
-	DevToken      string
 	SIWEDomain    string
 	SIWEURI       string
 	SIWEStatement string
@@ -17,7 +16,6 @@ func loadAuth() AuthConfig {
 	return AuthConfig{
 		JWTSecret:     mustenv("JWT_SECRET"),
 		JWTTTL:        durationEnvHours("JWT_TTL", 24*time.Hour),
-		DevToken:      getenv("DEV_TOKEN", ""),
 		SIWEDomain:    getenv("SIWE_DOMAIN", getenv("SERVER_DOMAIN", "localhost")),
 		SIWEURI:       getenv("SIWE_URI", ""),
 		SIWEStatement: getenv("SIWE_STATEMENT", ""),

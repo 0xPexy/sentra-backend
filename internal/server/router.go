@@ -37,6 +37,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	api := r.Group("/api/v1")
 	api.GET("/addresses", addrH.LookupAddress)
 	api.GET("/events", idxH.StreamEvents)
+	api.GET("/stats/overview", idxH.StatsOverview)
 	if playgroundHub != nil {
 		api.GET("/playground/events", playgroundHub.ServeWS)
 	}
@@ -51,8 +52,7 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	{
 		ad.POST("/erc7677", pm.HandleJSONRPC)
 		ad.GET("/me", adminH.Me)
-		ad.GET("/stats/overview", idxH.StatsOverview)
-		ad.GET("/paymasters/:address/ops", idxH.SponsoredOps)
+		ad.GET("/paymasters/ops", idxH.SponsoredOps)
 		ad.GET("/ops/:userOpHash/gas", idxH.UserOperationGas)
 		ad.GET("/ops/:userOpHash", idxH.UserOperationDetail)
 
