@@ -5,7 +5,6 @@ GOBIN ?= $(shell go env GOPATH)/bin
 ifneq (,$(wildcard .env))
 SQLITE_DSN ?= $(shell sed -n 's/^SQLITE_DSN=//p' .env)
 CHAIN_RPC_URL ?= $(shell sed -n 's/^CHAIN_RPC_URL=//p' .env)
-ENTRY_POINT ?= $(shell sed -n 's/^ENTRY_POINT=//p' .env)
 USD_PER_MAX_OP_DEFAULT ?= $(shell sed -n 's/^USD_PER_MAX_OP_DEFAULT=//p' .env)
 endif
 

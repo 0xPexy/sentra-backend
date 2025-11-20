@@ -530,9 +530,6 @@ func (h *Handler) data(c *gin.Context, req rpcRequest) {
 
 func (h *Handler) resolvePaymaster(c *gin.Context) (*store.Paymaster, error) {
 	adminID := c.GetUint("adminID")
-	if adminID == 0 {
-		return nil, newRPCError(errInvalidRequest, "admin context required")
-	}
 	pm, err := h.repo.GetCurrentPaymaster(c.Request.Context())
 	if err != nil {
 		h.logf("load paymaster failed: adminID=%d err=%v", adminID, err)

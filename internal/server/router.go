@@ -44,13 +44,13 @@ func NewRouter(cfg config.Config, authSvc *auth.Service, pm *erc7677.Handler, ad
 	api.GET("/playground/nft", playgroundH.NFTMetadata)
 	api.POST("/bundler", bundlerH.Proxy)
 	api.GET("/nfts/:address", nftH.ListAccountNFTs)
+	api.POST("/erc7677", auth.OptionalJWTMiddleware(authSvc), pm.HandleJSONRPC)
 
 	r.GET("/auth/nonce", adminH.Nonce)
 	r.POST("/auth/login", adminH.Login)
 	guard := auth.JWTMiddleware(authSvc)
 	ad := api.Group("", guard)
 	{
-		ad.POST("/erc7677", pm.HandleJSONRPC)
 		ad.GET("/me", adminH.Me)
 		ad.GET("/paymasters/ops", idxH.SponsoredOps)
 		ad.GET("/ops/:userOpHash/gas", idxH.UserOperationGas)
